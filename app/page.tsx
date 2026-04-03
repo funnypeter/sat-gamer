@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export default async function Home() {
   const supabase = createClient();
@@ -11,8 +12,12 @@ export default async function Home() {
     redirect("/login");
   }
 
-  // Fetch role and redirect accordingly
-  const { data: profile } = await supabase
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const { data: profile } = await admin
     .from("users")
     .select("role")
     .eq("id", user.id)
