@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { DSAT_CATEGORIES } from "@/lib/constants";
 
 export async function POST(req: NextRequest) {
   const { userId, email, displayName, familyName } = await req.json();
