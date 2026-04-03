@@ -1,6 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
+function generateInviteCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/1/O/0 to avoid confusion
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
 export async function POST(req: NextRequest) {
   const { userId, email, displayName, familyName } = await req.json();
 
@@ -14,10 +23,11 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // 1. Create family
+  // 1. Create family with invite code
+  const inviteCode = generateInviteCode();
   const { data: family, error: familyError } = await supabase
     .from("families")
-    .insert({ name: familyName })
+    .insert({ name: familyName, invite_code: inviteCode })
     .select()
     .single();
 

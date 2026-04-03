@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import ChildOverviewCard from "@/components/parent/ChildOverviewCard";
 import RedemptionQueue from "@/components/parent/RedemptionQueue";
+import InviteCodeCard from "@/components/parent/InviteCodeCard";
 
 export default async function ParentDashboard() {
   const supabase = createClient();
@@ -24,6 +25,12 @@ export default async function ParentDashboard() {
     .single();
 
   if (!profile) redirect("/login");
+
+  const { data: family } = await admin
+    .from("families")
+    .select("name, invite_code")
+    .eq("id", profile.family_id)
+    .single();
 
   const { data: students } = await admin
     .from("users")
@@ -81,6 +88,10 @@ export default async function ParentDashboard() {
         <h2 className="text-2xl font-bold text-white">Welcome, {profile.display_name}</h2>
         <p className="text-gray-400">Your family&apos;s SAT prep overview</p>
       </div>
+
+      {family?.invite_code && (
+        <InviteCodeCard inviteCode={family.invite_code} />
+      )}
 
       <section>
         <h3 className="mb-4 text-lg font-semibold text-white">Students</h3>
