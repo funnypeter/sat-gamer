@@ -44,41 +44,21 @@ export default function SignupPage() {
         return;
       }
 
-      // 2. Create family
-      const { data: family, error: familyError } = await supabase
-        .from("families")
-        .insert({ name: familyName, settings: {
-          accuracyTiers: [
-            { min: 90, minutes: 15 },
-            { min: 80, minutes: 12 },
-            { min: 70, minutes: 10 },
-            { min: 60, minutes: 7 },
-            { min: 0, minutes: 5 },
-          ],
-          decayDays: 7,
-          dailyCapMinutes: 60,
-          weekendBaseMinutes: 30,
-          blockMinutes: 15,
-        }})
-        .select()
-        .single();
-
-      if (familyError || !family) {
-        setError("Failed to create family. Please try again.");
-        return;
-      }
-
-      // 3. Create user profile
-      const { error: profileError } = await supabase.from("users").insert({
-        id: authData.user.id,
-        family_id: family.id,
-        role: "parent",
-        display_name: displayName,
-        email,
+      // 2. Create family + user profile via API (uses admin client to bypass RLS)
+      const setupResp = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: authData.user.id,
+          email,
+          displayName,
+          familyName,
+        }),
       });
 
-      if (profileError) {
-        setError("Failed to create profile. Please try again.");
+      if (!setupResp.ok) {
+        const errData = await setupResp.json().catch(() => ({}));
+        setError(errData.error || "Failed to set up account. Please try again.");
         return;
       }
 
