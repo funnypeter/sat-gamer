@@ -14,8 +14,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify parent role
-    const { data: parentProfile } = await supabase
+    const adminClient = createAdminClient();
+
+    // Verify parent role using admin client
+    const { data: parentProfile } = await adminClient
       .from("users")
       .select("role, family_id")
       .eq("id", user.id)
@@ -38,8 +40,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    const adminClient = createAdminClient();
 
     // Create auth user
     const { data: authData, error: authError } =
