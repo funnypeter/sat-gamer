@@ -26,11 +26,9 @@ export default async function ParentDashboard() {
 
   if (!profile) redirect("/login");
 
-  const { data: family } = await admin
-    .from("families")
-    .select("name, invite_code")
-    .eq("id", profile.family_id)
-    .single();
+  // Use raw query to get invite_code (bypasses PostgREST schema cache)
+  const { data: familyRows } = await admin.rpc("get_family_by_id", { family_id_input: profile.family_id });
+  const family = Array.isArray(familyRows) ? familyRows[0] : familyRows;
 
   const { data: students } = await admin
     .from("users")

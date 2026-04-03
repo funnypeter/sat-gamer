@@ -11,14 +11,14 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
 
-  // 1. Look up family by invite code
-  const { data: family, error: familyError } = await admin
-    .from("families")
-    .select("id, name")
-    .eq("invite_code", inviteCode.toUpperCase())
-    .single();
+  // 1. Look up family by invite code (use RPC to bypass schema cache)
+  const { data: families } = await admin.rpc("get_family_by_invite_code", {
+    code_input: inviteCode.toUpperCase(),
+  });
 
-  if (familyError || !family) {
+  const family = Array.isArray(families) ? families[0] : families;
+
+  if (!family) {
     return NextResponse.json({ error: "Invalid invite code" }, { status: 404 });
   }
 
