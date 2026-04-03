@@ -4,7 +4,7 @@ import ChildOverviewCard from "@/components/parent/ChildOverviewCard";
 import RedemptionQueue from "@/components/parent/RedemptionQueue";
 
 export default async function ParentDashboard() {
-  const supabase = await createClient();
+  const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

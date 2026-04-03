@@ -10,7 +10,7 @@ import type { DsatCategory, DifficultyBand } from "@/lib/constants";
 export async function POST(request: Request) {
   try {
     // Auth check
-    const supabase = await createClient();
+    const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();

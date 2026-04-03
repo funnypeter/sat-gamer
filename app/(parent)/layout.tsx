@@ -7,7 +7,7 @@ export default async function ParentLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
+  const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -56,23 +56,9 @@ export default async function ParentLayout({
               {pendingCount} pending
             </span>
           )}
-          <form action="/api/auth/signout" method="post">
-            <button
-              type="submit"
-              className="text-sm text-gray-400 hover:text-white transition-colors"
-              onClick={async (e) => {
-                e.preventDefault();
-                const { createClient } = await import(
-                  "@/lib/supabase/client"
-                );
-                const supabase = createClient();
-                await supabase.auth.signOut();
-                window.location.href = "/login";
-              }}
-            >
-              Sign Out
-            </button>
-          </form>
+          <a href="/login" className="text-sm text-gray-400 hover:text-white transition-colors">
+            Sign Out
+          </a>
         </div>
       </header>
 

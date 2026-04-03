@@ -4,7 +4,7 @@ import { selectNextQuestion } from "@/lib/engine/question-selector";
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
