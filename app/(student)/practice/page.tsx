@@ -105,6 +105,11 @@ export default function PracticePage() {
       if (!res.ok) { setError(data.error || "Failed to submit answer"); return; }
       recordAnswer(data.isCorrect, data.correctAnswer, data.explanations);
 
+      // Prefetch more questions in background after first answer
+      if (totalQuestions === 0) {
+        fetch("/api/questions/prefetch", { method: "POST" }).catch(() => {});
+      }
+
       if (data.minutesAwarded > 0) {
         addTimeEarned(data.minutesAwarded);
         setLastEarned(data.minutesAwarded);

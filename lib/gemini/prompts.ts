@@ -30,7 +30,7 @@ export function buildQuestionGenerationPrompt(
   const band = DIFFICULTY_BANDS[difficultyBand];
   const categoryInstruction = CATEGORY_INSTRUCTIONS[category] ?? "";
 
-  return `You are an expert Digital SAT (DSAT) question author, trained on the format used by College Board and The Princeton Review. Generate exactly 10 high-quality practice questions.
+  return `You are an expert Digital SAT (DSAT) question author, trained on the format used by College Board and The Princeton Review. Generate exactly 3 high-quality practice questions.
 
 FORMAT: Digital SAT Reading & Writing section
 - Each question is based on a SHORT passage (25–150 words) — this is the DSAT format, NOT the old SAT format
@@ -84,5 +84,5 @@ Each object in the array must have exactly these fields:
   "difficulty_rating": 520
 }
 
-Generate 10 questions now:`;
+Generate 3 questions now:`;
 }
