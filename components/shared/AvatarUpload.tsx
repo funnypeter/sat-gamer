@@ -71,7 +71,7 @@ export default function AvatarUpload({ currentUrl, displayName, size = "lg" }: A
 
   return (
     <><div className="relative group cursor-pointer" onClick={() => fileRef.current?.click()}>
-      <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} hidden />
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUpload} hidden />
       <div className={`${dim} rounded-full overflow-hidden bg-accent-blue/20 flex items-center justify-center`}>
         {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
