@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function LeaderboardPage() {
   const supabase = createClient();
@@ -9,38 +10,32 @@ export default async function LeaderboardPage() {
 
   if (!user) redirect("/login");
 
-  // Get the student's family_id
-  const { data: profile } = await supabase
+  const admin = createAdminClient();
+
+  const { data: profile } = await admin
     .from("users")
     .select("family_id")
     .eq("id", user.id)
     .single();
 
-  // Fetch family students with their streaks
-  const { data: familyStudents } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: familyStudents } = await admin
     .from("users")
     .select("id, display_name")
     .eq("family_id", profile?.family_id ?? "")
     .eq("role", "student");
 
-  // Fetch streaks for all family students
-  const studentIds = familyStudents?.map((s) => s.id) ?? [];
-  const { data: streaks } = await supabase
-    .from("streaks")
-    .select("student_id, current_streak, longest_streak")
-    .in("student_id", studentIds.length > 0 ? studentIds : ["none"]);
+  const studentIds = (familyStudents ?? []).map((s: { id: string }) => s.id);
+  const { data: streaks } = studentIds.length > 0
+    ? await admin.from("streaks").select("student_id, current_streak, longest_streak").in("student_id", studentIds)
+    : { data: [] };
 
-  // Merge data
-  const leaderboard = (familyStudents ?? [])
-    .map((student) => {
-      const streak = streaks?.find((s) => s.student_id === student.id);
-      return {
-        ...student,
-        currentStreak: streak?.current_streak ?? 0,
-        longestStreak: streak?.longest_streak ?? 0,
-      };
-    })
-    .sort((a, b) => b.currentStreak - a.currentStreak);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const leaderboard = (familyStudents ?? []).map((student: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const streak = (streaks ?? []).find((s: any) => s.student_id === student.id);
+    return { ...student, currentStreak: streak?.current_streak ?? 0, longestStreak: streak?.longest_streak ?? 0 };
+  }).sort((a: { currentStreak: number }, b: { currentStreak: number }) => b.currentStreak - a.currentStreak);
 
   return (
     <div className="mx-auto max-w-md space-y-6 animate-fade-in">
@@ -55,36 +50,18 @@ export default async function LeaderboardPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {leaderboard.map((student, index) => (
-            <div
-              key={student.id}
-              className={`card-glass p-4 flex items-center gap-4 ${
-                student.id === user.id ? "ring-1 ring-accent-blue/50" : ""
-              }`}
-            >
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-full font-bold text-sm ${
-                  index === 0
-                    ? "bg-accent-gold/20 text-accent-gold"
-                    : index === 1
-                    ? "bg-gray-400/20 text-gray-300"
-                    : index === 2
-                    ? "bg-orange-500/20 text-orange-400"
-                    : "bg-white/5 text-gray-400"
-                }`}
-              >
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {leaderboard.map((student: any, index: number) => (
+            <div key={student.id} className={`card-glass p-4 flex items-center gap-4 ${student.id === user.id ? "ring-1 ring-accent-blue/50" : ""}`}>
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full font-bold text-sm ${index === 0 ? "bg-accent-gold/20 text-accent-gold" : index === 1 ? "bg-gray-400/20 text-gray-300" : "bg-white/5 text-gray-400"}`}>
                 {index + 1}
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-white">
                   {student.display_name}
-                  {student.id === user.id && (
-                    <span className="ml-2 text-xs text-accent-blue">(You)</span>
-                  )}
+                  {student.id === user.id && <span className="ml-2 text-xs text-accent-blue">(You)</span>}
                 </p>
-                <p className="text-xs text-gray-400">
-                  Best: {student.longestStreak} days
-                </p>
+                <p className="text-xs text-gray-400">Best: {student.longestStreak} days</p>
               </div>
               <div className="flex items-center gap-1 badge-gold">
                 <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">

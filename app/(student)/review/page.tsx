@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function ReviewPage() {
   const supabase = createClient();
@@ -9,8 +10,10 @@ export default async function ReviewPage() {
 
   if (!user) redirect("/login");
 
-  // Fetch recent incorrect answers
-  const { data: mistakes } = await supabase
+  const admin = createAdminClient();
+
+  // Fetch recent incorrect answers with question details
+  const { data: mistakes } = await admin
     .from("student_questions")
     .select("*, questions(*)")
     .eq("student_id", user.id)
@@ -31,27 +34,41 @@ export default async function ReviewPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {mistakes.map((m) => {
-            const q = m.questions as Record<string, unknown> | null;
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {mistakes.map((m: any) => {
+            const q = m.questions;
             return (
-              <div key={m.id} className="card-glass p-4 space-y-2">
-                <div className="badge-red mb-2">
-                  {(q as Record<string, unknown>)?.category as string ?? "Unknown"}
+              <div key={m.id} className="card-glass p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-accent-blue">
+                    {q?.category ?? "Unknown"}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {new Date(m.answered_at).toLocaleDateString()}
+                  </span>
                 </div>
-                <p className="text-sm text-gray-300 line-clamp-2">
-                  {(q as Record<string, unknown>)?.passage_text as string ?? ""}
+                <p className="text-sm text-gray-400 line-clamp-3">
+                  {q?.passage_text ?? ""}
                 </p>
                 <p className="text-sm font-medium text-white">
-                  {(q as Record<string, unknown>)?.question_text as string ?? ""}
+                  {q?.question_text ?? ""}
                 </p>
-                <div className="flex gap-2 text-xs">
-                  <span className="text-accent-red">
-                    Your answer: {m.answer_given}
-                  </span>
-                  <span className="text-accent-green">
-                    Correct: {(q as Record<string, unknown>)?.correct_answer as string ?? ""}
-                  </span>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                    <span className="text-gray-400">Your answer: </span>
+                    <span className="text-accent-red font-semibold">{m.answer_given}</span>
+                  </div>
+                  <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-3 py-2">
+                    <span className="text-gray-400">Correct: </span>
+                    <span className="text-accent-green font-semibold">{q?.correct_answer ?? ""}</span>
+                  </div>
                 </div>
+                {q?.explanations && (
+                  <div className="text-xs text-gray-400 bg-white/5 rounded-lg p-3">
+                    <p className="font-semibold text-accent-green mb-1">Why {q.correct_answer} is correct:</p>
+                    <p>{q.explanations[q.correct_answer]}</p>
+                  </div>
+                )}
               </div>
             );
           })}
