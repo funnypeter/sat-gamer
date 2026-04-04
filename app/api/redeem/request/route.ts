@@ -16,10 +16,8 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
 
     const body = await request.json();
-    const { requestedMinutes, activityDescription } = body as {
-      requestedMinutes: number;
-      activityDescription: string;
-    };
+    const requestedMinutes = body.requestedMinutes ?? body.minutes;
+    const activityDescription = body.activityDescription ?? body.activity ?? "";
 
     if (!requestedMinutes || requestedMinutes <= 0) {
       return NextResponse.json(
