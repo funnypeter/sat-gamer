@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateNewElo } from "@/lib/engine/elo";
 import {
   calculateMinutesEarned,
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const admin = createAdminClient();
+
     const body = await request.json();
     const { sessionId, questionId, answerGiven, timeSpentSeconds } = body as {
       sessionId: string;
@@ -29,7 +32,7 @@ export async function POST(request: Request) {
     };
 
     // Fetch the question
-    const { data: question } = await supabase
+    const { data: question } = await admin
       .from("questions")
       .select("*")
       .eq("id", questionId)
@@ -45,7 +48,7 @@ export async function POST(request: Request) {
     const isCorrect = answerGiven === question.correct_answer;
 
     // Get or create student stats for this category
-    let { data: stats } = await supabase
+    let { data: stats } = await admin
       .from("student_stats")
       .select("*")
       .eq("student_id", user.id)
@@ -53,7 +56,7 @@ export async function POST(request: Request) {
       .single();
 
     if (!stats) {
-      const { data: newStats } = await supabase
+      const { data: newStats } = await admin
         .from("student_stats")
         .insert({
           student_id: user.id,
@@ -75,7 +78,7 @@ export async function POST(request: Request) {
     );
 
     // Record the answer
-    await supabase.from("student_questions").insert({
+    await admin.from("student_questions").insert({
       session_id: sessionId,
       student_id: user.id,
       question_id: questionId,
@@ -87,7 +90,7 @@ export async function POST(request: Request) {
     });
 
     // Update student stats
-    await supabase
+    await admin
       .from("student_stats")
       .update({
         elo_rating: eloAfter,
@@ -99,7 +102,7 @@ export async function POST(request: Request) {
       .eq("category", question.category);
 
     // Update session totals
-    const { data: session } = await supabase
+    const { data: session } = await admin
       .from("sessions")
       .select("*")
       .eq("id", sessionId)
@@ -132,7 +135,7 @@ export async function POST(request: Request) {
         newTotal > 0 ? Math.round((newCorrect / newTotal) * 100) : 0;
 
       // Get family settings
-      const { data: userProfile } = await supabase
+      const { data: userProfile } = await admin
         .from("users")
         .select("family_id")
         .eq("id", user.id)
@@ -146,7 +149,7 @@ export async function POST(request: Request) {
         blockMinutes: DEFAULT_SETTINGS.blockMinutes,
       };
       if (userProfile) {
-        const { data: family } = await supabase
+        const { data: family } = await admin
           .from("families")
           .select("settings")
           .eq("id", userProfile.family_id)
@@ -162,7 +165,7 @@ export async function POST(request: Request) {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      const { data: todayBalances } = await supabase
+      const { data: todayBalances } = await admin
         .from("time_balances")
         .select("minutes_earned")
         .eq("student_id", user.id)
@@ -185,7 +188,7 @@ export async function POST(request: Request) {
       if (minutesAwarded > 0) {
         // Create time balance
         const now = new Date();
-        await supabase.from("time_balances").insert({
+        await admin.from("time_balances").insert({
           student_id: user.id,
           session_id: sessionId,
           minutes_earned: minutesAwarded,
@@ -199,7 +202,7 @@ export async function POST(request: Request) {
     }
 
     // Update session
-    await supabase
+    await admin
       .from("sessions")
       .update({
         total_questions: newTotal,
@@ -215,7 +218,7 @@ export async function POST(request: Request) {
 
     // Handle spaced repetition for incorrect answers
     if (!isCorrect) {
-      const { data: existingSR } = await supabase
+      const { data: existingSR } = await admin
         .from("spaced_repetition")
         .select("*")
         .eq("student_id", user.id)
@@ -224,7 +227,7 @@ export async function POST(request: Request) {
 
       if (existingSR) {
         // Reset interval on failure
-        await supabase
+        await admin
           .from("spaced_repetition")
           .update({
             next_review_date: new Date(
@@ -238,7 +241,7 @@ export async function POST(request: Request) {
           .eq("id", existingSR.id);
       } else {
         // Create new spaced repetition entry
-        await supabase.from("spaced_repetition").insert({
+        await admin.from("spaced_repetition").insert({
           student_id: user.id,
           question_id: questionId,
           next_review_date: new Date(
@@ -253,7 +256,7 @@ export async function POST(request: Request) {
       }
     } else {
       // Correct answer — increase interval if in spaced repetition
-      const { data: existingSR } = await supabase
+      const { data: existingSR } = await admin
         .from("spaced_repetition")
         .select("*")
         .eq("student_id", user.id)
@@ -265,7 +268,7 @@ export async function POST(request: Request) {
         const newInterval = Math.round(
           existingSR.interval_days * newEase
         );
-        await supabase
+        await admin
           .from("spaced_repetition")
           .update({
             next_review_date: new Date(

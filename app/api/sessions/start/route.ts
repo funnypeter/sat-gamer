@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST() {
   try {
@@ -12,25 +13,26 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check for any active sessions — abandon them first
-    const { data: activeSessions } = await supabase
+    const admin = createAdminClient();
+
+    // Abandon any active sessions
+    const { data: activeSessions } = await admin
       .from("sessions")
-      .select("id, block_seconds")
+      .select("id")
       .eq("student_id", user.id)
       .eq("status", "active");
 
     if (activeSessions && activeSessions.length > 0) {
-      // Mark previous active sessions as abandoned
       for (const session of activeSessions) {
-        await supabase
+        await admin
           .from("sessions")
           .update({ status: "abandoned", ended_at: new Date().toISOString() })
           .eq("id", session.id);
       }
     }
 
-    // Get the most recent completed session's block_seconds for continuity
-    const { data: lastSession } = await supabase
+    // Get previous session's block_seconds for continuity
+    const { data: lastSession } = await admin
       .from("sessions")
       .select("block_seconds")
       .eq("student_id", user.id)
@@ -40,7 +42,7 @@ export async function POST() {
       .single();
 
     // Create new session
-    const { data: session, error } = await supabase
+    const { data: session, error } = await admin
       .from("sessions")
       .insert({
         student_id: user.id,
@@ -54,24 +56,22 @@ export async function POST() {
       .single();
 
     if (error || !session) {
-      return NextResponse.json(
-        { error: "Failed to create session" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
     }
 
-    // Get today's earned minutes for cap tracking
+    // Today's earned minutes for cap tracking
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const { data: todayBalances } = await supabase
+    const { data: todayBalances } = await admin
       .from("time_balances")
       .select("minutes_earned")
       .eq("student_id", user.id)
       .gte("earned_at", todayStart.toISOString());
 
     const minutesEarnedToday =
-      todayBalances?.reduce((sum, b) => sum + Number(b.minutes_earned), 0) ?? 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      todayBalances?.reduce((sum: number, b: any) => sum + Number(b.minutes_earned), 0) ?? 0;
 
     return NextResponse.json({
       sessionId: session.id,
@@ -80,9 +80,6 @@ export async function POST() {
     });
   } catch (err) {
     console.error("Session start error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

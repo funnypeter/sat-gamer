@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { updateStreak } from "@/lib/engine/streak";
 
 export async function POST(request: Request) {
@@ -13,11 +14,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const admin = createAdminClient();
+
     const body = await request.json();
     const { sessionId } = body as { sessionId: string };
 
     // Finalize the session
-    const { data: session } = await supabase
+    const { data: session } = await admin
       .from("sessions")
       .select("*")
       .eq("id", sessionId)
@@ -39,7 +42,7 @@ export async function POST(request: Request) {
     }
 
     // Update session to completed
-    await supabase
+    await admin
       .from("sessions")
       .update({
         status: "completed",
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
 
     // Update streak (only if they answered at least 1 question)
     if (session.total_questions > 0) {
-      const { data: currentStreak } = await supabase
+      const { data: currentStreak } = await admin
         .from("streaks")
         .select("*")
         .eq("student_id", user.id)
@@ -70,7 +73,7 @@ export async function POST(request: Request) {
       const todayStr = new Date().toISOString().split("T")[0];
 
       if (currentStreak) {
-        await supabase
+        await admin
           .from("streaks")
           .update({
             current_streak: streakResult.newStreak,
@@ -79,7 +82,7 @@ export async function POST(request: Request) {
           })
           .eq("student_id", user.id);
       } else {
-        await supabase.from("streaks").insert({
+        await admin.from("streaks").insert({
           student_id: user.id,
           current_streak: streakResult.newStreak,
           longest_streak: streakResult.newLongestStreak,
@@ -89,7 +92,7 @@ export async function POST(request: Request) {
 
       // Award bonus minutes for streak milestones
       if (streakResult.bonusMinutes > 0) {
-        await supabase.from("time_balances").insert({
+        await admin.from("time_balances").insert({
           student_id: user.id,
           session_id: sessionId,
           minutes_earned: streakResult.bonusMinutes,
@@ -99,7 +102,7 @@ export async function POST(request: Request) {
           ).toISOString(),
         });
 
-        await supabase.from("notifications").insert({
+        await admin.from("notifications").insert({
           user_id: user.id,
           type: "streak_milestone",
           title: "Streak Milestone!",

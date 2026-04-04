@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
@@ -12,8 +13,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const admin = createAdminClient();
+
     // Verify user is a parent
-    const { data: profile } = await supabase
+    const { data: profile } = await admin
       .from("users")
       .select("role, family_id")
       .eq("id", user.id)
@@ -34,7 +37,7 @@ export async function POST(request: Request) {
     }
 
     // Fetch the request
-    const { data: redemptionRequest } = await supabase
+    const { data: redemptionRequest } = await admin
       .from("redemption_requests")
       .select("*")
       .eq("id", requestId)
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
     }
 
     // Verify the student is in the parent's family
-    const { data: student } = await supabase
+    const { data: student } = await admin
       .from("users")
       .select("family_id")
       .eq("id", redemptionRequest.student_id)
@@ -66,7 +69,7 @@ export async function POST(request: Request) {
     }
 
     // Update the request
-    await supabase
+    await admin
       .from("redemption_requests")
       .update({
         status: action,
@@ -79,7 +82,7 @@ export async function POST(request: Request) {
       // Mark time balances as redeemed up to the requested amount
       let remainingToRedeem = Number(redemptionRequest.requested_minutes);
 
-      const { data: balances } = await supabase
+      const { data: balances } = await admin
         .from("time_balances")
         .select("*")
         .eq("student_id", redemptionRequest.student_id)
@@ -95,14 +98,14 @@ export async function POST(request: Request) {
           const available = Number(balance.minutes_remaining);
           if (available <= remainingToRedeem) {
             // Use entire balance
-            await supabase
+            await admin
               .from("time_balances")
               .update({ minutes_remaining: 0, redeemed: true })
               .eq("id", balance.id);
             remainingToRedeem -= available;
           } else {
             // Partial use
-            await supabase
+            await admin
               .from("time_balances")
               .update({
                 minutes_remaining: available - remainingToRedeem,
@@ -115,7 +118,7 @@ export async function POST(request: Request) {
     }
 
     // Notify the student
-    await supabase.from("notifications").insert({
+    await admin.from("notifications").insert({
       user_id: redemptionRequest.student_id,
       type: "redemption_resolved",
       title:

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +12,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const admin = createAdminClient();
 
     const body = await request.json();
     const { requestedMinutes, activityDescription } = body as {
@@ -26,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     // Verify the student has enough balance
-    const { data: balances } = await supabase
+    const { data: balances } = await admin
       .from("time_balances")
       .select("minutes_remaining")
       .eq("student_id", user.id)
@@ -47,7 +50,7 @@ export async function POST(request: Request) {
     }
 
     // Create the redemption request
-    const { data: redemptionRequest, error } = await supabase
+    const { data: redemptionRequest, error } = await admin
       .from("redemption_requests")
       .insert({
         student_id: user.id,
@@ -66,14 +69,14 @@ export async function POST(request: Request) {
     }
 
     // Notify parent(s)
-    const { data: profile } = await supabase
+    const { data: profile } = await admin
       .from("users")
       .select("family_id, display_name")
       .eq("id", user.id)
       .single();
 
     if (profile) {
-      const { data: parents } = await supabase
+      const { data: parents } = await admin
         .from("users")
         .select("id")
         .eq("family_id", profile.family_id)
@@ -88,7 +91,7 @@ export async function POST(request: Request) {
           data: { requestId: redemptionRequest.id },
         }));
 
-        await supabase.from("notifications").insert(notifications);
+        await admin.from("notifications").insert(notifications);
       }
     }
 
