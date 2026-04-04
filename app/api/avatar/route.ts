@@ -12,13 +12,13 @@ export async function POST(request: Request) {
   const file = formData.get("file") as File;
   if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
 
-  const ext = file.name.split(".").pop() || "jpg";
-  const path = `${user.id}/avatar.${ext}`;
+  const path = `${user.id}/avatar.jpg`;
 
-  // Upload to storage
+  // Delete old avatar first, then upload new one
+  await admin.storage.from("avatars").remove([path]);
   const { error: uploadError } = await admin.storage
     .from("avatars")
-    .upload(path, file, { upsert: true, contentType: file.type });
+    .upload(path, file, { contentType: file.type });
 
   if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
 

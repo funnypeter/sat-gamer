@@ -11,6 +11,7 @@ interface AvatarUploadProps {
 export default function AvatarUpload({ currentUrl, displayName, size = "lg" }: AvatarUploadProps) {
   const [avatarUrl, setAvatarUrl] = useState(currentUrl);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const dim = size === "lg" ? "h-20 w-20" : "h-12 w-12";
@@ -20,16 +21,21 @@ export default function AvatarUpload({ currentUrl, displayName, size = "lg" }: A
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setError(null);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/avatar", { method: "POST", body: formData });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
         setAvatarUrl(data.avatarUrl);
+      } else {
+        setError(data.error || "Upload failed");
       }
-    } catch {}
+    } catch {
+      setError("Upload failed");
+    }
     setUploading(false);
   }
 
