@@ -70,13 +70,6 @@ export default function LeaderboardClient({
         </button>
       </div>
 
-      {/* Score breakdown legend */}
-      <div className="flex gap-3 text-[10px] text-gray-500 uppercase tracking-wider">
-        <span>Accuracy 40%</span>
-        <span>Streak 25%</span>
-        <span>Difficulty 20%</span>
-        <span>Volume 15%</span>
-      </div>
 
       {/* Rankings */}
       <div className="space-y-3">
@@ -138,6 +131,17 @@ export default function LeaderboardClient({
             </div>
           );
         })}
+      </div>
+
+      {/* Color key */}
+      <div className="card-glass p-4 space-y-2">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Score Breakdown</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full bg-accent-green" /><span className="text-gray-300">Accuracy — 40%</span></div>
+          <div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full bg-accent-gold" /><span className="text-gray-300">Streak — 25%</span></div>
+          <div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full bg-accent-blue" /><span className="text-gray-300">Difficulty — 20%</span></div>
+          <div className="flex items-center gap-2"><div className="h-2.5 w-2.5 rounded-full bg-purple-500" /><span className="text-gray-300">Volume — 15%</span></div>
+        </div>
       </div>
     </div>
   );
