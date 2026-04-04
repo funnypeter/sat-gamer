@@ -101,9 +101,8 @@ export default function PracticePage() {
         }),
       });
 
-      if (!res.ok) { setError("Failed to submit answer"); return; }
-
       const data = await res.json();
+      if (!res.ok) { setError(data.error || "Failed to submit answer"); return; }
       recordAnswer(data.isCorrect, data.correctAnswer, data.explanations);
 
       if (data.minutesAwarded > 0) {
@@ -208,12 +207,19 @@ export default function PracticePage() {
 
       {/* Question */}
       {currentQuestion && !showFeedback && (
-        <QuestionCard
-          question={currentQuestion}
-          onAnswer={handleAnswer}
-          selectedAnswer={selectedAnswer}
-          disabled={submitting}
-        />
+        <>
+          <QuestionCard
+            question={currentQuestion}
+            onAnswer={handleAnswer}
+            selectedAnswer={selectedAnswer}
+            disabled={submitting}
+          />
+          {submitting && (
+            <div className="text-center py-2">
+              <span className="text-sm text-gray-400 animate-pulse">Checking answer...</span>
+            </div>
+          )}
+        </>
       )}
 
       {/* Feedback */}
