@@ -18,7 +18,10 @@ export const metadata: Metadata = {
   title: "SAT Gamer — Level Up Your SAT Score",
   description:
     "Gamified Digital SAT Verbal prep. Earn gaming time by mastering reading and writing skills.",
-  icons: { icon: "/favicon.ico" },
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
