@@ -37,9 +37,12 @@ export default function PracticePage() {
   const answerStartTime = useRef<number>(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch next question
+  const retryCount = useRef(0);
+
+  // Fetch next question — auto-retries while Gemini generates
   const fetchNextQuestion = useCallback(async () => {
     try {
+      setError(null);
       const res = await fetch("/api/questions/next");
       if (!res.ok) return;
       const data = await res.json();
@@ -47,8 +50,14 @@ export default function PracticePage() {
         setCurrentQuestion(data.question);
         setSelectedAnswer(null);
         answerStartTime.current = Date.now();
+        retryCount.current = 0;
+      } else if (retryCount.current < 3) {
+        retryCount.current++;
+        setError("Generating questions... please wait.");
+        setTimeout(() => fetchNextQuestion(), 5000);
       } else {
-        setError("No questions available. Ask a parent or admin to generate questions.");
+        setError("Could not generate questions. Check that GEMINI_API_KEY is configured.");
+        retryCount.current = 0;
       }
     } catch {
       setError("Failed to load question.");

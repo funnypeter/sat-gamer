@@ -30,8 +30,8 @@ async function generateQuestions(admin: ReturnType<typeof createAdminClient>, ca
     }));
     await admin.from("questions").insert(rows);
     return rows.length;
-  } catch (err) {
-    console.error("Auto-generate error:", err);
+  } catch (err: unknown) {
+    console.error("Auto-generate error:", err instanceof Error ? err.message : err);
     return 0;
   }
 }
@@ -61,7 +61,7 @@ export async function GET() {
     }
 
     if (!question) {
-      return NextResponse.json({ question: null, message: "Generating questions, please try again in a moment." });
+      return NextResponse.json({ question: null, message: "No questions available. Questions are being generated — please try again in a few seconds." });
     }
 
     const safeQuestion = {
