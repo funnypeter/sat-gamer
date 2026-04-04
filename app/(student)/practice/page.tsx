@@ -89,9 +89,9 @@ export default function PracticePage() {
     }
   }
 
-  // Block timer tick
+  // Block timer tick — only when a question is loaded and not showing feedback
   useEffect(() => {
-    if (isActive && !showFeedback) {
+    if (isActive && currentQuestion && !showFeedback) {
       timerRef.current = setInterval(() => {
         tickBlock();
       }, 1000);
@@ -100,7 +100,7 @@ export default function PracticePage() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isActive, showFeedback, tickBlock]);
+  }, [isActive, currentQuestion, showFeedback, tickBlock]);
 
   // Submit answer
   async function handleAnswer(answer: string) {
