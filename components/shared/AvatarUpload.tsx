@@ -24,8 +24,10 @@ export default function AvatarUpload({ currentUrl, displayName, size = "lg" }: A
     setError(null);
 
     try {
+      // Compress before upload
+      const compressed = await compressImage(file, 400, 0.8);
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", compressed);
       const res = await fetch("/api/avatar", { method: "POST", body: formData });
       const data = await res.json();
       if (res.ok) {
@@ -37,6 +39,34 @@ export default function AvatarUpload({ currentUrl, displayName, size = "lg" }: A
       setError("Upload failed");
     }
     setUploading(false);
+  }
+
+  function compressImage(file: File, maxDim: number, quality: number): Promise<File> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve(new File([blob], "avatar.jpg", { type: "image/jpeg" }));
+            else reject(new Error("Compression failed"));
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = URL.createObjectURL(file);
+    });
   }
 
   return (
