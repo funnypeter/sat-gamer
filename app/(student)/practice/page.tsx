@@ -202,6 +202,14 @@ export default function PracticePage() {
       {error && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
           {error}
+          {selectedAnswer && !showFeedback && (
+            <button
+              onClick={async () => { setError(null); setSelectedAnswer(null); await fetchNextQuestion(); }}
+              className="block mt-2 text-accent-blue hover:underline font-semibold"
+            >
+              Skip to next question →
+            </button>
+          )}
         </div>
       )}
 
