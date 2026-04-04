@@ -137,10 +137,6 @@ export default async function ParentDashboard() {
         <p className="text-gray-400">Your family&apos;s SAT prep overview</p>
       </div>
 
-      {family?.invite_code && (
-        <InviteCodeCard inviteCode={family.invite_code} />
-      )}
-
       <section>
         <h3 className="mb-4 text-lg font-semibold text-white">Students</h3>
         {childData.length === 0 ? (

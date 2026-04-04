@@ -48,6 +48,9 @@ export default async function ParentLayout({
           <Link href="/parent-dashboard" className="border-b-2 border-transparent py-3 text-sm text-gray-400 transition-colors hover:text-white hover:border-accent-blue">
             Dashboard
           </Link>
+          <Link href="/settings" className="border-b-2 border-transparent py-3 text-sm text-gray-400 transition-colors hover:text-white hover:border-accent-blue">
+            Settings
+          </Link>
         </div>
       </nav>
 
