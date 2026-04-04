@@ -1,78 +1,82 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import LeaderboardClient from "./LeaderboardClient";
 
 export default async function LeaderboardPage() {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const admin = createAdminClient();
 
-  const { data: profile } = await admin
-    .from("users")
-    .select("family_id")
-    .eq("id", user.id)
-    .single();
-
+  const { data: profile } = await admin.from("users").select("family_id").eq("id", user.id).single();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: familyStudents } = await admin
-    .from("users")
-    .select("id, display_name")
-    .eq("family_id", profile?.family_id ?? "")
-    .eq("role", "student");
-
+  const { data: familyStudents } = await admin.from("users").select("id, display_name").eq("family_id", profile?.family_id ?? "").eq("role", "student");
   const studentIds = (familyStudents ?? []).map((s: { id: string }) => s.id);
-  const { data: streaks } = studentIds.length > 0
-    ? await admin.from("streaks").select("student_id, current_streak, longest_streak").in("student_id", studentIds)
-    : { data: [] };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const leaderboard = (familyStudents ?? []).map((student: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const streak = (streaks ?? []).find((s: any) => s.student_id === student.id);
-    return { ...student, currentStreak: streak?.current_streak ?? 0, longestStreak: streak?.longest_streak ?? 0 };
-  }).sort((a: { currentStreak: number }, b: { currentStreak: number }) => b.currentStreak - a.currentStreak);
-
-  return (
-    <div className="mx-auto max-w-md space-y-6 animate-fade-in">
-      <div>
+  if (studentIds.length === 0) {
+    return (
+      <div className="mx-auto max-w-md space-y-6 animate-fade-in">
         <h2 className="text-2xl font-bold text-white">Leaderboard</h2>
-        <p className="text-gray-400">Family rankings</p>
-      </div>
-
-      {leaderboard.length === 0 ? (
         <div className="card-glass p-8 text-center">
           <p className="text-gray-400">No students in your family yet.</p>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-          {leaderboard.map((student: any, index: number) => (
-            <div key={student.id} className={`card-glass p-4 flex items-center gap-4 ${student.id === user.id ? "ring-1 ring-accent-blue/50" : ""}`}>
-              <div className={`flex h-8 w-8 items-center justify-center rounded-full font-bold text-sm ${index === 0 ? "bg-accent-gold/20 text-accent-gold" : index === 1 ? "bg-gray-400/20 text-gray-300" : "bg-white/5 text-gray-400"}`}>
-                {index + 1}
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-white">
-                  {student.display_name}
-                  {student.id === user.id && <span className="ml-2 text-xs text-accent-blue">(You)</span>}
-                </p>
-                <p className="text-xs text-gray-400">Best: {student.longestStreak} days</p>
-              </div>
-              <div className="flex items-center gap-1 badge-gold">
-                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2c0 0-4 6-4 10a4 4 0 108 0c0-4-4-10-4-10z" />
-                </svg>
-                {student.currentStreak}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
+  // Fetch all data needed for composite scoring
+  const { data: streaks } = await admin.from("streaks").select("*").in("student_id", studentIds);
+  const { data: allStats } = await admin.from("student_stats").select("*").in("student_id", studentIds);
+
+  // All-time answers
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: allAnswers } = await admin.from("student_questions").select("student_id, is_correct, elo_before").in("student_id", studentIds);
+
+  // Weekly answers (last 7 days)
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: weekAnswers } = await admin.from("student_questions").select("student_id, is_correct, elo_before").in("student_id", studentIds).gte("answered_at", weekAgo.toISOString());
+
+  // Build leaderboard data for each student
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const students = (familyStudents ?? []).map((s: any) => {
+    const streak = (streaks ?? []).find((st: { student_id: string }) => st.student_id === s.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const studentStats = (allStats ?? []).filter((st: any) => st.student_id === s.id);
+    const avgElo = studentStats.length > 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? Math.round(studentStats.reduce((sum: number, st: any) => sum + st.elo_rating, 0) / studentStats.length)
+      : 500;
+
+    // All-time stats
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const myAllAnswers = (allAnswers ?? []).filter((a: any) => a.student_id === s.id);
+    const allTotal = myAllAnswers.length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allCorrect = myAllAnswers.filter((a: any) => a.is_correct).length;
+    const allAccuracy = allTotal > 0 ? Math.round((allCorrect / allTotal) * 100) : 0;
+
+    // Weekly stats
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const myWeekAnswers = (weekAnswers ?? []).filter((a: any) => a.student_id === s.id);
+    const weekTotal = myWeekAnswers.length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const weekCorrect = myWeekAnswers.filter((a: any) => a.is_correct).length;
+    const weekAccuracy = weekTotal > 0 ? Math.round((weekCorrect / weekTotal) * 100) : 0;
+
+    return {
+      id: s.id,
+      displayName: s.display_name,
+      currentStreak: streak?.current_streak ?? 0,
+      longestStreak: streak?.longest_streak ?? 0,
+      avgElo,
+      allTime: { total: allTotal, correct: allCorrect, accuracy: allAccuracy },
+      weekly: { total: weekTotal, correct: weekCorrect, accuracy: weekAccuracy },
+    };
+  });
+
+  return <LeaderboardClient students={students} currentUserId={user.id} />;
 }
