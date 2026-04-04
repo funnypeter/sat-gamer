@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import InviteCodeCard from "@/components/parent/InviteCodeCard";
+import AvatarUpload from "@/components/shared/AvatarUpload";
 
 export default async function SettingsPage() {
   const supabase = createClient();
@@ -10,7 +11,7 @@ export default async function SettingsPage() {
 
   const admin = createAdminClient();
 
-  const { data: profile } = await admin.from("users").select("family_id, display_name, email").eq("id", user.id).single();
+  const { data: profile } = await admin.from("users").select("family_id, display_name, email, avatar_url").eq("id", user.id).single();
   if (!profile) redirect("/login");
 
   const { data: familyRows } = await admin.rpc("get_family_by_id", { family_id_input: profile.family_id });
@@ -23,20 +24,13 @@ export default async function SettingsPage() {
         <p className="text-gray-400">Account &amp; family settings</p>
       </div>
 
-      <section className="card-glass p-6 space-y-4">
-        <h3 className="text-lg font-semibold text-white">Profile</h3>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Name</span>
-            <span className="text-white">{profile.display_name}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Email</span>
-            <span className="text-white">{profile.email}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Role</span>
-            <span className="text-white">Parent</span>
+      <section className="card-glass p-6">
+        <div className="flex items-center gap-5">
+          <AvatarUpload currentUrl={profile.avatar_url} displayName={profile.display_name} />
+          <div>
+            <p className="text-lg font-semibold text-white">{profile.display_name}</p>
+            <p className="text-sm text-gray-400">{profile.email}</p>
+            <p className="text-xs text-gray-500 mt-1">Tap photo to change</p>
           </div>
         </div>
       </section>

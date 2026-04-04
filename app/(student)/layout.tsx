@@ -42,13 +42,21 @@ export default async function StudentLayout({
         <h1 className="font-display text-xl font-bold text-white">
           SAT <span className="text-accent-blue">Gamer</span>
         </h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 badge-gold">
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2c0 0-4 6-4 10a4 4 0 108 0c0-4-4-10-4-10z" />
             </svg>
             <span className="font-semibold">{streak?.current_streak ?? 0}</span>
           </div>
+          <Link href="/profile" className="flex h-8 w-8 rounded-full overflow-hidden bg-accent-blue/20 items-center justify-center">
+            {profile.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-sm font-bold text-accent-blue">{profile.display_name?.[0]?.toUpperCase()}</span>
+            )}
+          </Link>
         </div>
       </header>
 
