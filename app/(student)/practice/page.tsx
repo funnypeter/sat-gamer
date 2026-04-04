@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import QuestionCard from "@/components/student/QuestionCard";
 import FeedbackOverlay from "@/components/student/FeedbackOverlay";
-import PracticeTimer from "@/components/student/PracticeTimer";
 
 export default function PracticePage() {
   const {
@@ -17,14 +16,11 @@ export default function PracticePage() {
     lastExplanations,
     totalQuestions,
     correctCount,
-    blockSeconds,
     startSession,
     endSession,
     setCurrentQuestion,
     recordAnswer,
     dismissFeedback,
-    tickBlock,
-    setBlockSeconds,
     addTimeEarned,
     setTimeEarnedToday,
   } = useSessionStore();
@@ -33,13 +29,12 @@ export default function PracticePage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [blockCompleteMessage, setBlockCompleteMessage] = useState<string | null>(null);
+  const [lastEarned, setLastEarned] = useState<number | null>(null);
+  const [earnedToday, setEarnedToday] = useState(0);
+  const [sessionEarned, setSessionEarned] = useState(0);
   const answerStartTime = useRef<number>(Date.now());
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const retryCount = useRef(0);
 
-  // Fetch next question — auto-retries while Gemini generates
   const fetchNextQuestion = useCallback(async () => {
     try {
       setError(null);
@@ -49,6 +44,7 @@ export default function PracticePage() {
       if (data.question) {
         setCurrentQuestion(data.question);
         setSelectedAnswer(null);
+        setLastEarned(null);
         answerStartTime.current = Date.now();
         retryCount.current = 0;
       } else if (retryCount.current < 3) {
@@ -64,23 +60,19 @@ export default function PracticePage() {
     }
   }, [setCurrentQuestion]);
 
-  // Start a new practice session
   async function handleStart() {
     setLoading(true);
     setError(null);
+    setSessionEarned(0);
 
     try {
       const res = await fetch("/api/sessions/start", { method: "POST" });
-      if (!res.ok) {
-        setError("Failed to start session");
-        return;
-      }
+      if (!res.ok) { setError("Failed to start session"); return; }
 
       const data = await res.json();
       startSession(data.sessionId);
       setTimeEarnedToday(data.minutesEarnedToday ?? 0);
-
-      // Start the block timer
+      setEarnedToday(data.minutesEarnedToday ?? 0);
       await fetchNextQuestion();
     } catch {
       setError("Failed to start session");
@@ -89,23 +81,8 @@ export default function PracticePage() {
     }
   }
 
-  // Block timer tick — only when a question is loaded and not showing feedback
-  useEffect(() => {
-    if (isActive && currentQuestion && !showFeedback) {
-      timerRef.current = setInterval(() => {
-        tickBlock();
-      }, 1000);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isActive, currentQuestion, showFeedback, tickBlock]);
-
-  // Submit answer
   async function handleAnswer(answer: string) {
     if (submitting || !sessionId || !currentQuestion) return;
-
     setSelectedAnswer(answer);
     setSubmitting(true);
 
@@ -123,25 +100,16 @@ export default function PracticePage() {
         }),
       });
 
-      if (!res.ok) {
-        setError("Failed to submit answer");
-        return;
-      }
+      if (!res.ok) { setError("Failed to submit answer"); return; }
 
       const data = await res.json();
-      recordAnswer(
-        data.isCorrect,
-        data.correctAnswer,
-        data.explanations
-      );
+      recordAnswer(data.isCorrect, data.correctAnswer, data.explanations);
 
-      setBlockSeconds(data.blockSeconds);
-
-      if (data.blockCompleted && data.minutesAwarded > 0) {
+      if (data.minutesAwarded > 0) {
         addTimeEarned(data.minutesAwarded);
-        setBlockCompleteMessage(
-          `Block complete! You earned ${data.minutesAwarded} minutes of gaming time!`
-        );
+        setLastEarned(data.minutesAwarded);
+        setSessionEarned(prev => prev + data.minutesAwarded);
+        setEarnedToday(data.earnedTodayTotal);
       }
     } catch {
       setError("Failed to submit answer");
@@ -150,59 +118,38 @@ export default function PracticePage() {
     }
   }
 
-  // Next question after feedback
   async function handleNext() {
     dismissFeedback();
-    setBlockCompleteMessage(null);
+    setLastEarned(null);
     await fetchNextQuestion();
   }
 
-  // End session
   async function handleEnd() {
     if (!sessionId) return;
-
     try {
       await fetch("/api/sessions/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
-    } catch {
-      // Best effort
-    }
-
+    } catch {}
     endSession();
   }
 
-  // Not started yet — show start screen
+  // Not started
   if (!isActive) {
     return (
       <div className="mx-auto max-w-md flex flex-col items-center justify-center min-h-[60vh] gap-6 animate-fade-in">
         <div className="text-center">
           <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-accent-blue/10 mx-auto">
-            <svg
-              className="h-10 w-10 text-accent-blue"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
+            <svg className="h-10 w-10 text-accent-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-white">Ready to Practice?</h2>
           <p className="mt-2 text-gray-400">
-            Answer questions in 15-minute blocks to earn gaming time.
+            Answer questions to earn gaming time. Every question counts!
           </p>
         </div>
 
@@ -212,11 +159,7 @@ export default function PracticePage() {
           </div>
         )}
 
-        <button
-          onClick={handleStart}
-          disabled={loading}
-          className="btn-primary text-lg px-10 py-4"
-        >
+        <button onClick={handleStart} disabled={loading} className="btn-primary text-lg px-10 py-4">
           {loading ? "Starting..." : "Start Practice"}
         </button>
       </div>
@@ -224,46 +167,40 @@ export default function PracticePage() {
   }
 
   // Active session
+  const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
   return (
     <div className="mx-auto max-w-md space-y-4 animate-fade-in">
-      {/* Session header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <PracticeTimer
-            blockSeconds={blockSeconds}
-            blockMinutes={15}
-          />
-          <div>
-            <p className="text-sm text-gray-400">
-              {totalQuestions} answered &middot;{" "}
-              <span className="text-accent-green">
-                {totalQuestions > 0
-                  ? Math.round((correctCount / totalQuestions) * 100)
-                  : 0}
-                %
-              </span>
-            </p>
-          </div>
+      {/* Session stats bar */}
+      <div className="flex items-center justify-between card-glass px-4 py-3">
+        <div className="flex items-center gap-4 text-sm">
+          <span className="text-white font-semibold">{totalQuestions} <span className="text-gray-400 font-normal">answered</span></span>
+          <span className="text-accent-green font-semibold">{accuracy}%</span>
         </div>
-        <button
-          onClick={handleEnd}
-          className="text-sm text-gray-400 hover:text-accent-red transition-colors"
-        >
-          End Session
-        </button>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-xs text-gray-400">Session earned</p>
+            <p className="text-sm font-bold text-accent-blue">{sessionEarned} min</p>
+          </div>
+          <button onClick={handleEnd} className="text-sm text-gray-400 hover:text-accent-red transition-colors">
+            End
+          </button>
+        </div>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
-          {error}
+      {/* Per-question earnings notification */}
+      {lastEarned !== null && showFeedback && (
+        <div className={`rounded-lg px-4 py-2 text-sm font-semibold text-center animate-slide-up ${
+          lastEarned >= 1.5 ? "bg-accent-gold/10 border border-accent-gold/20 text-accent-gold"
+          : "bg-accent-blue/10 border border-accent-blue/20 text-accent-blue"
+        }`}>
+          +{lastEarned} min gaming time earned!
         </div>
       )}
 
-      {/* Block complete notification */}
-      {blockCompleteMessage && (
-        <div className="rounded-lg bg-accent-gold/10 border border-accent-gold/20 px-4 py-3 text-sm text-accent-gold animate-slide-up">
-          {blockCompleteMessage}
+      {error && (
+        <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
+          {error}
         </div>
       )}
 
@@ -277,7 +214,7 @@ export default function PracticePage() {
         />
       )}
 
-      {/* Feedback overlay */}
+      {/* Feedback */}
       {showFeedback && (
         <FeedbackOverlay
           isCorrect={lastAnswerCorrect ?? false}
@@ -289,14 +226,26 @@ export default function PracticePage() {
         />
       )}
 
-      {/* Loading state */}
+      {/* Loading */}
       {!currentQuestion && !error && (
         <div className="card-glass p-8 text-center">
-          <div className="animate-pulse text-gray-400">
-            Loading question...
-          </div>
+          <div className="animate-pulse text-gray-400">Loading question...</div>
         </div>
       )}
+
+      {/* Today's earning progress */}
+      <div className="card-glass px-4 py-3">
+        <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+          <span>Today&apos;s earnings</span>
+          <span>{earnedToday} / 60 min</span>
+        </div>
+        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-accent-blue rounded-full transition-all duration-500"
+            style={{ width: `${Math.min(100, (earnedToday / 60) * 100)}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
