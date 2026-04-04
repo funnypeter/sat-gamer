@@ -7,7 +7,6 @@ export default function RedeemPage() {
   const router = useRouter();
   const [availableMinutes, setAvailableMinutes] = useState(0);
   const [selectedMinutes, setSelectedMinutes] = useState(15);
-  const [activity, setActivity] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,17 +16,16 @@ export default function RedeemPage() {
     fetch("/api/redeem/balance")
       .then((r) => r.json())
       .then((data) => {
-        setAvailableMinutes(data.availableMinutes ?? 0);
+        const avail = Math.floor(data.availableMinutes ?? 0);
+        setAvailableMinutes(avail);
+        setSelectedMinutes(Math.min(15, avail));
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
   async function handleRedeem() {
-    if (selectedMinutes > availableMinutes) {
-      setError("Not enough minutes available.");
-      return;
-    }
+    if (selectedMinutes > availableMinutes || selectedMinutes <= 0) return;
     setSubmitting(true);
     setError(null);
 
@@ -35,10 +33,7 @@ export default function RedeemPage() {
       const res = await fetch("/api/redeem/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          minutes: selectedMinutes,
-          activity: activity || "Gaming",
-        }),
+        body: JSON.stringify({ minutes: selectedMinutes, activity: "Gaming" }),
       });
 
       if (!res.ok) {
@@ -46,7 +41,6 @@ export default function RedeemPage() {
         setError(data.error || "Failed to submit request");
         return;
       }
-
       setSuccess(true);
     } catch {
       setError("Failed to submit request");
@@ -65,7 +59,7 @@ export default function RedeemPage() {
         </div>
         <h2 className="text-2xl font-bold text-white">Request Sent!</h2>
         <p className="text-gray-400">
-          Your request for {selectedMinutes} minutes has been sent to your parent for approval.
+          Your request for {selectedMinutes} minutes has been sent for approval.
         </p>
         <button onClick={() => router.push("/student-dashboard")} className="btn-primary px-8">
           Back to Home
@@ -74,7 +68,28 @@ export default function RedeemPage() {
     );
   }
 
-  const options = [15, 30, 45];
+  // Calculate dial rotation (0-270 degrees for the arc)
+  const maxMin = Math.max(1, availableMinutes);
+  const pct = selectedMinutes / maxMin;
+  const angle = pct * 270; // 270 degree arc
+  const radius = 100;
+  const cx = 120;
+  const cy = 120;
+  const startAngle = 135; // start from bottom-left
+  const endAngle = startAngle + angle;
+  const startRad = (startAngle * Math.PI) / 180;
+  const endRad = (endAngle * Math.PI) / 180;
+  const x1 = cx + radius * Math.cos(startRad);
+  const y1 = cy + radius * Math.sin(startRad);
+  const x2 = cx + radius * Math.cos(endRad);
+  const y2 = cy + radius * Math.sin(endRad);
+  const largeArc = angle > 180 ? 1 : 0;
+
+  // Background arc (full 270)
+  const bgEndAngle = startAngle + 270;
+  const bgEndRad = (bgEndAngle * Math.PI) / 180;
+  const bx2 = cx + radius * Math.cos(bgEndRad);
+  const by2 = cy + radius * Math.sin(bgEndRad);
 
   return (
     <div className="mx-auto max-w-md space-y-6 animate-fade-in">
@@ -83,44 +98,55 @@ export default function RedeemPage() {
         <p className="text-gray-400">Cash in your earned minutes</p>
       </div>
 
-      <div className="card-glow p-6 text-center">
-        <p className="text-sm font-medium text-gray-400 uppercase tracking-wider">Available Balance</p>
-        <p className="mt-2 text-5xl font-bold text-accent-blue">
-          {loading ? "..." : availableMinutes}
-          <span className="text-2xl text-gray-400 ml-1">min</span>
-        </p>
-      </div>
-
       {availableMinutes > 0 ? (
-        <div className="card-glass p-6 space-y-5">
-          <div>
-            <label className="text-sm font-semibold text-gray-300 block mb-3">How much time?</label>
-            <div className="grid grid-cols-3 gap-3">
-              {options.filter(o => o <= availableMinutes).map((mins) => (
-                <button
-                  key={mins}
-                  onClick={() => setSelectedMinutes(mins)}
-                  className={`rounded-xl py-3 text-center font-bold text-lg transition-all ${
-                    selectedMinutes === mins
-                      ? "bg-accent-blue text-white ring-2 ring-accent-blue/50"
-                      : "bg-white/5 text-gray-300 hover:bg-white/10"
-                  }`}
-                >
-                  {mins} min
-                </button>
-              ))}
+        <div className="space-y-6">
+          {/* Dial */}
+          <div className="flex flex-col items-center">
+            <div className="relative w-[240px] h-[240px]">
+              <svg viewBox="0 0 240 240" className="w-full h-full">
+                {/* Background track */}
+                <path
+                  d={`M ${x1} ${y1} A ${radius} ${radius} 0 1 1 ${bx2} ${by2}`}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeWidth="16"
+                  strokeLinecap="round"
+                />
+                {/* Active arc */}
+                {selectedMinutes > 0 && (
+                  <path
+                    d={`M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`}
+                    fill="none"
+                    stroke="#3b82f6"
+                    strokeWidth="16"
+                    strokeLinecap="round"
+                  />
+                )}
+                {/* Thumb */}
+                <circle cx={x2} cy={y2} r="12" fill="#3b82f6" stroke="#0f172a" strokeWidth="4" />
+              </svg>
+              {/* Center text */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-5xl font-bold text-white">{selectedMinutes}</span>
+                <span className="text-sm text-gray-400">minutes</span>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="text-sm font-semibold text-gray-300 block mb-2">What for? (optional)</label>
+            {/* Slider input (hidden visual, controls the value) */}
             <input
-              type="text"
-              value={activity}
-              onChange={(e) => setActivity(e.target.value)}
-              className="input-field"
-              placeholder="e.g., Fortnite, Minecraft..."
+              type="range"
+              min={1}
+              max={availableMinutes}
+              step={1}
+              value={selectedMinutes}
+              onChange={(e) => setSelectedMinutes(parseInt(e.target.value))}
+              className="w-48 mt-2 accent-blue-500"
+              style={{ accentColor: "#3b82f6" }}
             />
+            <div className="flex justify-between w-48 text-xs text-gray-500 mt-1">
+              <span>1 min</span>
+              <span>{availableMinutes} min</span>
+            </div>
           </div>
 
           {error && (
@@ -131,7 +157,7 @@ export default function RedeemPage() {
 
           <button
             onClick={handleRedeem}
-            disabled={submitting || selectedMinutes > availableMinutes}
+            disabled={submitting || selectedMinutes <= 0}
             className="btn-primary w-full text-lg"
           >
             {submitting ? "Submitting..." : `Request ${selectedMinutes} Minutes`}
@@ -139,10 +165,12 @@ export default function RedeemPage() {
         </div>
       ) : (
         <div className="card-glass p-8 text-center">
-          <p className="text-gray-400">No minutes to redeem yet. Start practicing to earn gaming time!</p>
-          <button onClick={() => router.push("/practice")} className="btn-primary mt-4">
-            Start Practice
-          </button>
+          <p className="text-gray-400">{loading ? "Loading..." : "No minutes to redeem yet. Start practicing to earn gaming time!"}</p>
+          {!loading && (
+            <button onClick={() => router.push("/practice")} className="btn-primary mt-4">
+              Start Practice
+            </button>
+          )}
         </div>
       )}
     </div>
