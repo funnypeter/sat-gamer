@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import ChildOverviewCard from "@/components/parent/ChildOverviewCard";
 import RedemptionQueue from "@/components/parent/RedemptionQueue";
 import InviteCodeCard from "@/components/parent/InviteCodeCard";
@@ -13,10 +13,7 @@ export default async function ParentDashboard() {
 
   if (!user) redirect("/login");
 
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const admin = createAdminClient();
 
   const { data: profile } = await admin
     .from("users")
@@ -50,6 +47,24 @@ export default async function ParentDashboard() {
     ? await admin.from("redemption_requests").select("*").in("student_id", studentIds).eq("status", "pending").order("created_at", { ascending: false })
     : { data: [] };
 
+  // Fetch student_stats for each student
+  const { data: allStats } = studentIds.length > 0
+    ? await admin.from("student_stats").select("*").in("student_id", studentIds)
+    : { data: [] };
+
+  // Fetch student_questions for this week
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+
+  const { data: weeklyQuestions } = studentIds.length > 0
+    ? await admin
+        .from("student_questions")
+        .select("student_id, is_correct")
+        .in("student_id", studentIds)
+        .gte("answered_at", weekStart.toISOString())
+    : { data: [] };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const childData = (students ?? []).map((student: any) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,12 +73,47 @@ export default async function ParentDashboard() {
     const studentBals = (balances ?? []).filter((b: any) => b.student_id === student.id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const totalMin = studentBals.reduce((sum: number, b: any) => sum + Number(b.minutes_remaining || 0), 0);
+
+    // Compute overall accuracy from student_stats
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const studentStats = (allStats ?? []).filter((s: any) => s.student_id === student.id);
+    const totalAttempted = studentStats.reduce(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (sum: number, s: any) => sum + Number(s.total_attempted || 0), 0
+    );
+    const totalCorrect = studentStats.reduce(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (sum: number, s: any) => sum + Number(s.total_correct || 0), 0
+    );
+    const overallAccuracy = totalAttempted > 0 ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
+
+    // Weekly question count
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const studentWeekly = (weeklyQuestions ?? []).filter((q: any) => q.student_id === student.id);
+    const questionsThisWeek = studentWeekly.length;
+
+    // Top 3 weakest categories (lowest accuracy with at least 1 attempt)
+    const weakCategories = studentStats
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((s: any) => s.total_attempted > 0)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((s: any) => ({
+        category: s.category as string,
+        accuracy: Math.round((s.total_correct / s.total_attempted) * 100),
+        attempted: s.total_attempted as number,
+      }))
+      .sort((a: { accuracy: number }, b: { accuracy: number }) => a.accuracy - b.accuracy)
+      .slice(0, 3);
+
     return {
       id: student.id,
       displayName: student.display_name,
       currentStreak: streak?.current_streak ?? 0,
       longestStreak: streak?.longest_streak ?? 0,
       availableMinutes: totalMin,
+      overallAccuracy,
+      questionsThisWeek,
+      weakCategories,
     };
   });
 
