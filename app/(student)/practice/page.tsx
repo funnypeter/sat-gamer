@@ -30,7 +30,7 @@ export default function PracticePage() {
   const [submitting, setSubmitting] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [lastEarned, setLastEarned] = useState<number | null>(null);
-  const [earnedToday, setEarnedToday] = useState(0);
+  const [earnedThisWeek, setEarnedThisWeek] = useState(0);
   const [sessionEarned, setSessionEarned] = useState(0);
   const answerStartTime = useRef<number>(Date.now());
   const retryCount = useRef(0);
@@ -72,7 +72,7 @@ export default function PracticePage() {
       const data = await res.json();
       startSession(data.sessionId);
       setTimeEarnedToday(data.minutesEarnedToday ?? 0);
-      setEarnedToday(data.minutesEarnedToday ?? 0);
+      setEarnedThisWeek(data.minutesEarnedToday ?? 0);
       await fetchNextQuestion();
     } catch {
       setError("Failed to start session");
@@ -109,7 +109,7 @@ export default function PracticePage() {
         addTimeEarned(data.minutesAwarded);
         setLastEarned(data.minutesAwarded);
         setSessionEarned(prev => prev + data.minutesAwarded);
-        setEarnedToday(data.earnedTodayTotal);
+        setEarnedThisWeek(data.earnedThisWeek ?? 0);
       }
     } catch {
       setError("Failed to submit answer");
@@ -233,16 +233,16 @@ export default function PracticePage() {
         </div>
       )}
 
-      {/* Today's earning progress */}
+      {/* Weekly earning progress */}
       <div className="card-glass px-4 py-3">
         <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-          <span>Today&apos;s earnings</span>
-          <span>{earnedToday} / 60 min</span>
+          <span>This week&apos;s earnings</span>
+          <span>{earnedThisWeek} / 45 min</span>
         </div>
         <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
           <div
             className="h-full bg-accent-blue rounded-full transition-all duration-500"
-            style={{ width: `${Math.min(100, (earnedToday / 60) * 100)}%` }}
+            style={{ width: `${Math.min(100, (earnedThisWeek / 45) * 100)}%` }}
           />
         </div>
       </div>

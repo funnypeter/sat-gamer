@@ -2,16 +2,15 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateNewElo } from "@/lib/engine/elo";
-import { DEFAULT_SETTINGS } from "@/lib/constants";
+import { DEFAULT_SETTINGS, EARNING_RATES } from "@/lib/constants";
 
-// Per-question time earned based on correctness and difficulty
 function getMinutesPerQuestion(isCorrect: boolean, difficultyRating: number): number {
   if (isCorrect) {
-    if (difficultyRating >= 600) return 2;      // hard
-    if (difficultyRating >= 450) return 1.5;    // medium
-    return 1;                                     // easy
+    if (difficultyRating >= 600) return EARNING_RATES.correctHard;
+    if (difficultyRating >= 450) return EARNING_RATES.correctMedium;
+    return EARNING_RATES.correctEasy;
   }
-  return 0.5; // incorrect still earns something for trying
+  return EARNING_RATES.incorrect;
 }
 
 export async function POST(request: Request) {
@@ -101,21 +100,21 @@ export async function POST(request: Request) {
     // Calculate per-question time earned
     const minutesForQuestion = getMinutesPerQuestion(isCorrect, question.difficulty_rating);
 
-    // Check daily cap
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    // Check weekly cap (rolling 7 days)
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: todayBalances } = await admin
+    const { data: weekBalances } = await admin
       .from("time_balances")
       .select("minutes_earned")
       .eq("student_id", user.id)
-      .gte("earned_at", todayStart.toISOString());
+      .gte("earned_at", weekStart.toISOString());
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const earnedToday = todayBalances?.reduce((sum: number, b: any) => sum + Number(b.minutes_earned), 0) ?? 0;
-    const dailyCap = DEFAULT_SETTINGS.dailyCapMinutes;
-    const minutesAwarded = Math.min(minutesForQuestion, Math.max(0, dailyCap - earnedToday));
+    const earnedThisWeek = weekBalances?.reduce((sum: number, b: any) => sum + Number(b.minutes_earned), 0) ?? 0;
+    const weeklyCap = DEFAULT_SETTINGS.weeklyCapMinutes;
+    const minutesAwarded = Math.min(minutesForQuestion, Math.max(0, weeklyCap - earnedThisWeek));
 
     // Award time if any
     if (minutesAwarded > 0) {
@@ -203,7 +202,8 @@ export async function POST(request: Request) {
       eloChange: eloAfter - eloBefore,
       newElo: eloAfter,
       minutesAwarded,
-      earnedTodayTotal: earnedToday + minutesAwarded,
+      earnedThisWeek: earnedThisWeek + minutesAwarded,
+      weeklyCap,
       difficulty: question.difficulty_rating >= 600 ? "hard" : question.difficulty_rating >= 450 ? "medium" : "easy",
     });
   } catch (err) {

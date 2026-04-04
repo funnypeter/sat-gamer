@@ -13,18 +13,18 @@ export const DSAT_CATEGORIES = [
 
 export type DsatCategory = (typeof DSAT_CATEGORIES)[number];
 
+// Per-question earning rates
+export const EARNING_RATES = {
+  correctHard: 1.5,     // correct + difficulty >= 600
+  correctMedium: 1.0,   // correct + difficulty 450-599
+  correctEasy: 0.75,    // correct + difficulty < 450
+  incorrect: 0.25,      // wrong answer, still earns for trying
+} as const;
+
 export const DEFAULT_SETTINGS = {
-  accuracyTiers: [
-    { min: 90, minutes: 15 },
-    { min: 80, minutes: 12 },
-    { min: 70, minutes: 10 },
-    { min: 60, minutes: 7 },
-    { min: 0, minutes: 5 },
-  ],
+  weeklyCapMinutes: 45,
   decayDays: 7,
-  dailyCapMinutes: 60,
   weekendBaseMinutes: 30,
-  blockMinutes: 15,
 } as const;
 
 export const ELO_K_FACTOR = 32;
