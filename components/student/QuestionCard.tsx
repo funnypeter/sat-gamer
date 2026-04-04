@@ -25,13 +25,13 @@ export default function QuestionCard({
 
       {/* Passage */}
       <div className="card-glass p-4">
-        <p className="text-sm leading-relaxed text-gray-300">
+        <p className="text-base leading-relaxed text-gray-100">
           {question.passage_text}
         </p>
       </div>
 
       {/* Question */}
-      <p className="text-base font-medium text-white leading-relaxed">
+      <p className="text-lg font-semibold text-white leading-relaxed">
         {question.question_text}
       </p>
 
@@ -64,7 +64,7 @@ export default function QuestionCard({
                 >
                   {choice.label}
                 </span>
-                <span className="text-sm text-gray-200 leading-relaxed">
+                <span className="text-base text-gray-100 leading-relaxed">
                   {choice.text}
                 </span>
               </div>
