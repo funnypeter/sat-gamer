@@ -13,12 +13,12 @@ export const DSAT_CATEGORIES = [
 
 export type DsatCategory = (typeof DSAT_CATEGORIES)[number];
 
-// Per-question earning rates
+// Per-question earning rates (minutes of gaming per question)
 export const EARNING_RATES = {
-  correctHard: 1.5,     // correct + difficulty >= 600
-  correctMedium: 1.0,   // correct + difficulty 450-599
-  correctEasy: 0.75,    // correct + difficulty < 450
-  incorrect: 0.25,      // wrong answer, still earns for trying
+  correctHard: 0.75,    // correct + difficulty >= 600
+  correctMedium: 0.5,   // correct + difficulty 450-599
+  correctEasy: 0.25,    // correct + difficulty < 450
+  incorrect: 0,         // no reward for wrong answers
 } as const;
 
 export const DEFAULT_SETTINGS = {
@@ -27,7 +27,7 @@ export const DEFAULT_SETTINGS = {
   weekendBaseMinutes: 30,
 } as const;
 
-export const ELO_K_FACTOR = 32;
+export const ELO_K_FACTOR = 48;
 
 export const DIFFICULTY_BANDS = {
   easy: { min: 300, max: 450 },
