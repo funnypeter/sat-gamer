@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Question } from "@/lib/types/database";
 
 interface QuestionCardProps {
@@ -18,6 +19,23 @@ export default function QuestionCard({
   selectedAnswer,
   disabled,
 }: QuestionCardProps) {
+  const [eliminated, setEliminated] = useState<Set<string>>(new Set());
+
+  function toggleEliminate(label: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEliminated((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+        // If eliminating the selected answer, deselect it
+        if (selectedAnswer === label) onAnswer("");
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-4 animate-slide-up">
       {/* Category badge */}
@@ -39,36 +57,64 @@ export default function QuestionCard({
       <div className="space-y-3">
         {question.choices.map((choice) => {
           const isSelected = selectedAnswer === choice.label;
+          const isEliminated = eliminated.has(choice.label);
           return (
-            <button
-              key={choice.label}
-              onClick={() => onAnswer(choice.label)}
-              disabled={disabled}
-              className={`w-full text-left rounded-xl border p-4 transition-all duration-200 ${
-                isSelected
-                  ? "border-accent-blue bg-accent-blue/10 ring-1 ring-accent-blue/50"
-                  : "border-white/10 bg-navy-800/60 hover:border-white/20 hover:bg-navy-800/80"
-              } ${
-                disabled
-                  ? "cursor-not-allowed opacity-75"
-                  : "cursor-pointer active:scale-[0.99]"
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                    isSelected
-                      ? "bg-accent-blue text-white"
-                      : "bg-white/5 text-gray-400"
-                  }`}
-                >
-                  {choice.label}
-                </span>
-                <span className="text-base text-gray-100 leading-relaxed">
-                  {choice.text}
-                </span>
-              </div>
-            </button>
+            <div key={choice.label} className="flex items-start gap-2">
+              {/* Eliminate checkbox */}
+              <button
+                onClick={(e) => toggleEliminate(choice.label, e)}
+                disabled={disabled}
+                className={`mt-3.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                  isEliminated
+                    ? "bg-red-500/20 border-red-500/40"
+                    : "bg-white/5 border-white/10 hover:border-white/30"
+                }`}
+                title="Eliminate this choice"
+              >
+                {isEliminated && (
+                  <svg className="h-3 w-3 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                    <line x1="4" y1="4" x2="20" y2="20" />
+                    <line x1="20" y1="4" x2="4" y2="20" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Choice button */}
+              <button
+                onClick={() => !isEliminated && onAnswer(choice.label)}
+                disabled={disabled || isEliminated}
+                className={`flex-1 text-left rounded-xl border p-4 transition-all duration-200 ${
+                  isEliminated
+                    ? "border-white/5 bg-navy-800/30 opacity-40"
+                    : isSelected
+                    ? "border-accent-blue bg-accent-blue/10 ring-1 ring-accent-blue/50"
+                    : "border-white/10 bg-navy-800/60 hover:border-white/20 hover:bg-navy-800/80"
+                } ${
+                  disabled || isEliminated
+                    ? "cursor-not-allowed"
+                    : "cursor-pointer active:scale-[0.99]"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                      isEliminated
+                        ? "bg-white/5 text-gray-600"
+                        : isSelected
+                        ? "bg-accent-blue text-white"
+                        : "bg-white/5 text-gray-400"
+                    }`}
+                  >
+                    {choice.label}
+                  </span>
+                  <span className={`text-base leading-relaxed ${
+                    isEliminated ? "line-through text-gray-600" : "text-gray-100"
+                  }`}>
+                    {choice.text}
+                  </span>
+                </div>
+              </button>
+            </div>
           );
         })}
       </div>
