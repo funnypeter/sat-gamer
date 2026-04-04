@@ -40,7 +40,7 @@ export default function AvatarUpload({ currentUrl, displayName, size = "lg" }: A
   }
 
   return (
-    <div className="relative group cursor-pointer" onClick={() => fileRef.current?.click()}>
+    <><div className="relative group cursor-pointer" onClick={() => fileRef.current?.click()}>
       <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} hidden />
       <div className={`${dim} rounded-full overflow-hidden bg-accent-blue/20 flex items-center justify-center`}>
         {avatarUrl ? (
@@ -63,5 +63,7 @@ export default function AvatarUpload({ currentUrl, displayName, size = "lg" }: A
         )}
       </div>
     </div>
+    {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+    </>
   );
 }
