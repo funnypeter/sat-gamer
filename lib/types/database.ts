@@ -8,11 +8,9 @@ export interface Family {
 }
 
 export interface FamilySettings {
-  accuracyTiers: { min: number; minutes: number }[];
+  weeklyCapMinutes: number;
   decayDays: number;
-  dailyCapMinutes: number;
   weekendBaseMinutes: number;
-  blockMinutes: number;
 }
 
 export interface User {
