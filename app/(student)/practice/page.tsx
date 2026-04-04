@@ -134,6 +134,7 @@ export default function PracticePage() {
       });
     } catch {}
     endSession();
+    window.location.href = "/student-dashboard";
   }
 
   // Not started

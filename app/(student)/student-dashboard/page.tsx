@@ -76,9 +76,14 @@ export default async function StudentDashboard() {
             Earliest expiry: {new Date((balances[0] as { expires_at: string }).expires_at).toLocaleDateString()}
           </p>
         )}
-        <Link href="/practice" className="btn-primary mt-4 w-full text-lg">
-          Start Practice
-        </Link>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Link href="/practice" className="btn-primary text-center text-lg">
+            Practice
+          </Link>
+          <Link href="/redeem" className="btn-secondary text-center text-lg border border-accent-gold/30 text-accent-gold hover:bg-accent-gold/10">
+            Redeem Time
+          </Link>
+        </div>
       </div>
 
       <div className="card-glass p-4 flex items-center justify-between">
