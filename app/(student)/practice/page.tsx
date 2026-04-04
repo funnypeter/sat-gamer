@@ -188,8 +188,8 @@ export default function PracticePage() {
             <p className="text-xs text-gray-400">Session earned</p>
             <p className="text-sm font-bold text-accent-blue">{sessionEarned} min</p>
           </div>
-          <button onClick={handleEnd} className="text-sm text-gray-400 hover:text-accent-red transition-colors">
-            End
+          <button onClick={handleEnd} className="px-4 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition-colors">
+            End Session
           </button>
         </div>
       </div>
@@ -223,10 +223,18 @@ export default function PracticePage() {
         <>
           <QuestionCard
             question={currentQuestion}
-            onAnswer={handleAnswer}
+            onAnswer={(answer) => setSelectedAnswer(answer)}
             selectedAnswer={selectedAnswer}
             disabled={submitting}
           />
+          {selectedAnswer && !submitting && (
+            <button
+              onClick={() => handleAnswer(selectedAnswer)}
+              className="btn-primary w-full text-lg"
+            >
+              Submit Answer
+            </button>
+          )}
           {submitting && (
             <div className="text-center py-2">
               <span className="text-sm text-gray-400 animate-pulse">Checking answer...</span>

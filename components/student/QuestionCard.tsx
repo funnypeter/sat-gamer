@@ -43,13 +43,13 @@ export default function QuestionCard({
             <button
               key={choice.label}
               onClick={() => onAnswer(choice.label)}
-              disabled={disabled || selectedAnswer !== null}
+              disabled={disabled}
               className={`w-full text-left rounded-xl border p-4 transition-all duration-200 ${
                 isSelected
                   ? "border-accent-blue bg-accent-blue/10 ring-1 ring-accent-blue/50"
                   : "border-white/10 bg-navy-800/60 hover:border-white/20 hover:bg-navy-800/80"
               } ${
-                disabled || selectedAnswer !== null
+                disabled
                   ? "cursor-not-allowed opacity-75"
                   : "cursor-pointer active:scale-[0.99]"
               }`}
