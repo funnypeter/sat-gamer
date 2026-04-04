@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import ChildOverviewCard from "@/components/parent/ChildOverviewCard";
 import RedemptionQueue from "@/components/parent/RedemptionQueue";
-import InviteCodeCard from "@/components/parent/InviteCodeCard";
 
 export default async function ParentDashboard() {
   const supabase = createClient();
@@ -24,8 +23,6 @@ export default async function ParentDashboard() {
   if (!profile) redirect("/login");
 
   // Use raw query to get invite_code (bypasses PostgREST schema cache)
-  const { data: familyRows } = await admin.rpc("get_family_by_id", { family_id_input: profile.family_id });
-  const family = Array.isArray(familyRows) ? familyRows[0] : familyRows;
 
   const { data: students } = await admin
     .from("users")
