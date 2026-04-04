@@ -57,6 +57,13 @@ export default async function StudentDashboard() {
   const todayMinutes = todaySessions?.reduce((sum: number, s: any) => sum + Number(s.minutes_earned), 0) ?? 0;
   const todayAccuracy = todayQuestions > 0 ? Math.round((todayCorrect / todayQuestions) * 100) : 0;
 
+  // Category breakdown
+  const { data: categoryStats } = await admin
+    .from("student_stats")
+    .select("category, elo_rating, total_attempted, total_correct")
+    .eq("student_id", user.id)
+    .order("elo_rating", { ascending: true });
+
   return (
     <div className="mx-auto max-w-md space-y-6 animate-fade-in">
       <div>
@@ -120,6 +127,37 @@ export default async function StudentDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Category Breakdown */}
+      {categoryStats && categoryStats.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">Category Performance</h3>
+          <div className="space-y-2">
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            {categoryStats.map((cat: any) => {
+              const acc = cat.total_attempted > 0 ? Math.round((cat.total_correct / cat.total_attempted) * 100) : 0;
+              const eloColor = cat.elo_rating >= 600 ? "text-accent-green" : cat.elo_rating >= 450 ? "text-accent-blue" : "text-accent-red";
+              return (
+                <div key={cat.category} className="card-glass px-4 py-3 flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{cat.category}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-accent-blue rounded-full" style={{ width: `${acc}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-400 w-8 text-right">{acc}%</span>
+                    </div>
+                  </div>
+                  <div className="text-right ml-4 shrink-0">
+                    <p className={`text-sm font-bold ${eloColor}`}>{cat.elo_rating}</p>
+                    <p className="text-[10px] text-gray-500">{cat.total_attempted} Qs</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Link href="/review" className="btn-secondary text-center text-sm">Review Mistakes</Link>
