@@ -7,120 +7,132 @@ import type { Question } from "@/lib/types/database";
  * Priority:
  * 1. Spaced repetition items due today
  * 2. Elo-matched unseen questions weighted toward weakest categories
+ * 3. If pool is low, returns null so the caller can trigger generation
  *
- * @returns A question or null if no questions are available
+ * Never returns a question already answered in the current session.
  */
 export async function selectNextQuestion(
   supabase: SupabaseClient,
-  studentId: string
+  studentId: string,
+  currentSessionId?: string
 ): Promise<Question | null> {
+  // Get ALL question IDs this student has ever answered
+  const { data: answered } = await supabase
+    .from("student_questions")
+    .select("question_id")
+    .eq("student_id", studentId);
+
+  const answeredIds = new Set((answered ?? []).map((a: { question_id: string }) => a.question_id));
+
+  // Also get questions answered in THIS session (to avoid repeats within a session)
+  let sessionAnsweredIds = new Set<string>();
+  if (currentSessionId) {
+    const { data: sessionAnswered } = await supabase
+      .from("student_questions")
+      .select("question_id")
+      .eq("session_id", currentSessionId);
+    sessionAnsweredIds = new Set((sessionAnswered ?? []).map((a: { question_id: string }) => a.question_id));
+  }
+
   // 1. Check for spaced repetition items due today
   const today = new Date().toISOString().split("T")[0];
-
   const { data: srItems } = await supabase
     .from("spaced_repetition")
     .select("question_id")
     .eq("student_id", studentId)
     .lte("next_review_date", today)
     .order("next_review_date", { ascending: true })
-    .limit(1);
+    .limit(5);
 
   if (srItems && srItems.length > 0) {
-    const { data: question } = await supabase
-      .from("questions")
-      .select("*")
-      .eq("id", srItems[0].question_id)
-      .single();
-
-    if (question) return question as Question;
+    // Pick one not answered this session
+    for (const sr of srItems) {
+      if (!sessionAnsweredIds.has(sr.question_id)) {
+        const { data: question } = await supabase
+          .from("questions")
+          .select("*")
+          .eq("id", sr.question_id)
+          .single();
+        if (question) return question as Question;
+      }
+    }
   }
 
-  // 2. Get student stats to find weakest category
+  // 2. Get student stats to find weakest categories
   const { data: stats } = await supabase
     .from("student_stats")
     .select("*")
     .eq("student_id", studentId)
     .order("elo_rating", { ascending: true });
 
-  // Get list of questions the student has already answered
-  const { data: answered } = await supabase
-    .from("student_questions")
-    .select("question_id")
-    .eq("student_id", studentId);
-
-  const answeredIds = new Set(
-    (answered ?? []).map((a) => a.question_id)
-  );
-
-  // Determine target difficulty and category
-  let targetElo = 500; // default for new students
+  let targetElo = 500;
   let targetCategories: string[] = [];
 
   if (stats && stats.length > 0) {
-    // Weakest categories get priority — take bottom 3
     const weakest = stats.slice(0, 3);
-    targetCategories = weakest.map((s) => s.category);
-    // Use the average Elo of the weakest categories
+    targetCategories = weakest.map((s: { category: string }) => s.category);
     targetElo = Math.round(
-      weakest.reduce((sum, s) => sum + s.elo_rating, 0) / weakest.length
+      weakest.reduce((sum: number, s: { elo_rating: number }) => sum + s.elo_rating, 0) / weakest.length
     );
   }
 
-  // Query for Elo-matched questions in weak categories first
-  const eloRange = 100; // look +/- 100 from target
+  const eloRange = 150; // wider range to find more candidates
 
+  // Try weak categories first
   if (targetCategories.length > 0) {
-    const { data: candidates } = await supabase
-      .from("questions")
-      .select("*")
-      .in("category", targetCategories)
-      .gte("difficulty_rating", targetElo - eloRange)
-      .lte("difficulty_rating", targetElo + eloRange)
-      .limit(50);
-
-    if (candidates && candidates.length > 0) {
-      // Filter out already answered
-      const unseen = candidates.filter((q) => !answeredIds.has(q.id));
-      if (unseen.length > 0) {
-        // Random pick from unseen
-        const pick = unseen[Math.floor(Math.random() * unseen.length)];
-        return pick as Question;
-      }
-    }
+    const question = await findUnseen(supabase, answeredIds, sessionAnsweredIds, {
+      categories: targetCategories,
+      eloMin: targetElo - eloRange,
+      eloMax: targetElo + eloRange,
+    });
+    if (question) return question;
   }
 
-  // Fallback: any Elo-matched unseen question
-  const { data: fallback } = await supabase
-    .from("questions")
-    .select("*")
-    .gte("difficulty_rating", targetElo - eloRange)
-    .lte("difficulty_rating", targetElo + eloRange)
-    .limit(50);
+  // Try any category in Elo range
+  const question = await findUnseen(supabase, answeredIds, sessionAnsweredIds, {
+    eloMin: targetElo - eloRange,
+    eloMax: targetElo + eloRange,
+  });
+  if (question) return question;
 
-  if (fallback && fallback.length > 0) {
-    const unseen = fallback.filter((q) => !answeredIds.has(q.id));
-    if (unseen.length > 0) {
-      const pick = unseen[Math.floor(Math.random() * unseen.length)];
-      return pick as Question;
-    }
+  // Try any unseen question at all (any difficulty)
+  const anyQuestion = await findUnseen(supabase, answeredIds, sessionAnsweredIds, {});
+  if (anyQuestion) return anyQuestion;
+
+  // All questions exhausted — return null so caller triggers generation
+  return null;
+}
+
+async function findUnseen(
+  supabase: SupabaseClient,
+  answeredIds: Set<string>,
+  sessionAnsweredIds: Set<string>,
+  filters: { categories?: string[]; eloMin?: number; eloMax?: number }
+): Promise<Question | null> {
+  let query = supabase.from("questions").select("*").limit(100);
+
+  if (filters.categories && filters.categories.length > 0) {
+    query = query.in("category", filters.categories);
+  }
+  if (filters.eloMin !== undefined) {
+    query = query.gte("difficulty_rating", filters.eloMin);
+  }
+  if (filters.eloMax !== undefined) {
+    query = query.lte("difficulty_rating", filters.eloMax);
   }
 
-  // Last resort: any question at all
-  const { data: anyQuestion } = await supabase
-    .from("questions")
-    .select("*")
-    .limit(50);
+  const { data: candidates } = await query;
+  if (!candidates || candidates.length === 0) return null;
 
-  if (anyQuestion && anyQuestion.length > 0) {
-    const unseen = anyQuestion.filter((q) => !answeredIds.has(q.id));
-    if (unseen.length > 0) {
-      const pick = unseen[Math.floor(Math.random() * unseen.length)];
-      return pick as Question;
-    }
-    // Even if all answered, return a random one for practice
-    return anyQuestion[
-      Math.floor(Math.random() * anyQuestion.length)
-    ] as Question;
+  // Prefer never-answered, then not-answered-this-session
+  const neverSeen = candidates.filter((q: { id: string }) => !answeredIds.has(q.id));
+  if (neverSeen.length > 0) {
+    return neverSeen[Math.floor(Math.random() * neverSeen.length)] as Question;
+  }
+
+  const notThisSession = candidates.filter((q: { id: string }) => !sessionAnsweredIds.has(q.id));
+  if (notThisSession.length > 0) {
+    return notThisSession[Math.floor(Math.random() * notThisSession.length)] as Question;
   }
 
   return null;

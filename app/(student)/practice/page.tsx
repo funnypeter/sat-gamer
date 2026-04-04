@@ -38,7 +38,8 @@ export default function PracticePage() {
   const fetchNextQuestion = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetch("/api/questions/next");
+      const params = sessionId ? `?sessionId=${sessionId}` : "";
+      const res = await fetch(`/api/questions/next${params}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.question) {
@@ -58,7 +59,7 @@ export default function PracticePage() {
     } catch {
       setError("Failed to load question.");
     }
-  }, [setCurrentQuestion]);
+  }, [setCurrentQuestion, sessionId]);
 
   async function handleStart() {
     setLoading(true);

@@ -36,7 +36,7 @@ async function generateQuestions(admin: ReturnType<typeof createAdminClient>, ca
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = createClient();
     const {
@@ -49,14 +49,21 @@ export async function GET() {
 
     const admin = createAdminClient();
 
-    let question = await selectNextQuestion(admin, user.id);
+    // Get sessionId from query params if provided
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get("sessionId") ?? undefined;
 
-    // If no questions available, auto-generate for a random category
+    let question = await selectNextQuestion(admin, user.id, sessionId);
+
+    // If no questions available, auto-generate across multiple categories
     if (!question) {
+      // Pick a random category and a random difficulty
       const randomCategory = DSAT_CATEGORIES[Math.floor(Math.random() * DSAT_CATEGORIES.length)];
-      const count = await generateQuestions(admin, randomCategory, "medium");
+      const bands: Array<"easy" | "medium" | "hard"> = ["easy", "medium", "hard"];
+      const randomBand = bands[Math.floor(Math.random() * bands.length)];
+      const count = await generateQuestions(admin, randomCategory, randomBand);
       if (count > 0) {
-        question = await selectNextQuestion(admin, user.id);
+        question = await selectNextQuestion(admin, user.id, sessionId);
       }
     }
 
