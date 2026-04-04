@@ -64,17 +64,21 @@ export default function QuestionCard({
               <button
                 onClick={(e) => toggleEliminate(choice.label, e)}
                 disabled={disabled}
-                className={`mt-3.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                className={`mt-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 transition-all ${
                   isEliminated
-                    ? "bg-red-500/20 border-red-500/40"
-                    : "bg-white/5 border-white/10 hover:border-white/30"
+                    ? "bg-red-500/20 border-red-500/50"
+                    : "bg-white/10 border-white/20 hover:border-red-400/50 hover:bg-red-500/10"
                 }`}
                 title="Eliminate this choice"
               >
-                {isEliminated && (
-                  <svg className="h-3 w-3 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                {isEliminated ? (
+                  <svg className="h-4 w-4 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
                     <line x1="4" y1="4" x2="20" y2="20" />
                     <line x1="20" y1="4" x2="4" y2="20" />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
                 )}
               </button>
