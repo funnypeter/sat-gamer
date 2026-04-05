@@ -41,9 +41,9 @@ export async function GET(request: Request) {
     }
 
     // 2. Try unseen College Board questions first, then AI-generated
-    for (const source of ["collegeboard", null] as const) {
+    for (const source of ["cb", null] as const) {
       let query = admin.from("questions").select("*").limit(200);
-      if (source) query = query.eq("generated_by", source);
+      if (source) query = query.like("generated_by", "collegeboard%");
       const { data: cached } = await query;
       if (cached) {
         const unseen = cached.filter((q: { id: string }) => !allAnsweredIds.has(q.id) && !sessionAnsweredIds.has(q.id));

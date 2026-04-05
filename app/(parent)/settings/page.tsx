@@ -22,7 +22,7 @@ export default async function SettingsPage() {
   const { count: cbQuestionCount } = await admin
     .from("questions")
     .select("id", { count: "exact", head: true })
-    .eq("generated_by", "collegeboard");
+    .like("generated_by", "collegeboard%");
 
 
   return (

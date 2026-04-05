@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateNewElo } from "@/lib/engine/elo";
-import { DEFAULT_SETTINGS, EARNING_RATES } from "@/lib/constants";
+import { DEFAULT_SETTINGS, EARNING_RATES, DSAT_CATEGORIES } from "@/lib/constants";
+import { getGeminiModel } from "@/lib/gemini/client";
 
 function getMinutesPerQuestion(isCorrect: boolean, difficultyRating: number): number {
   if (isCorrect) {
@@ -43,6 +44,35 @@ export async function POST(request: Request) {
 
     if (!question) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    }
+
+    // Reclassify CB questions on first answer (one-time Gemini call)
+    if (question.generated_by === "collegeboard") {
+      try {
+        const model = getGeminiModel();
+        const categoryList = DSAT_CATEGORIES.join(", ");
+        const prompt = `Classify this Digital SAT Reading & Writing question into exactly one category.
+
+Categories: ${categoryList}
+
+Passage: ${(question.passage_text as string).substring(0, 500)}
+Question: ${question.question_text}
+
+Reply with ONLY the category name, nothing else.`;
+
+        const result = await model.generateContent(prompt);
+        const classified = result.response.text().trim();
+        const match = DSAT_CATEGORIES.find((c) => c === classified);
+        if (match) {
+          question.category = match;
+        }
+        await admin
+          .from("questions")
+          .update({ category: question.category, generated_by: "collegeboard-classified" })
+          .eq("id", questionId);
+      } catch {
+        // Classification failed — use the keyword-based category as-is
+      }
     }
 
     const isCorrect = answerGiven === question.correct_answer;
