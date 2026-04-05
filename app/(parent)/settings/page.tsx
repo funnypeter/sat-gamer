@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import InviteCodeCard from "@/components/parent/InviteCodeCard";
+import ParentInviteCard from "@/components/parent/ParentInviteCard";
 import AvatarUpload from "@/components/shared/AvatarUpload";
 
 export default async function SettingsPage() {
@@ -36,9 +37,15 @@ export default async function SettingsPage() {
       </section>
 
       {family?.invite_code && (
-        <section>
-          <h3 className="mb-4 text-lg font-semibold text-white">Family Invite Code</h3>
-          <InviteCodeCard inviteCode={family.invite_code} />
+        <section className="space-y-6">
+          <div>
+            <h3 className="mb-4 text-lg font-semibold text-white">Invite Students</h3>
+            <InviteCodeCard inviteCode={family.invite_code} />
+          </div>
+          <div>
+            <h3 className="mb-4 text-lg font-semibold text-white">Invite Co-Parent</h3>
+            <ParentInviteCard inviteCode={family.invite_code} />
+          </div>
         </section>
       )}
     </div>
