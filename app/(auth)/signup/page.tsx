@@ -32,6 +32,28 @@ export default function SignupPage() {
     } catch {}
   }
 
+  // Fire-and-forget: import CB questions in background after parent signup
+  function importCBQuestions() {
+    (async () => {
+      let offset = 0;
+      try {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const res = await fetch("/api/questions/import-cb", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ offset }),
+          });
+          const data = await res.json();
+          if (!res.ok || data.done || !data.nextOffset) break;
+          offset = data.nextOffset;
+        }
+      } catch {
+        // Silent fail — import can be retried from settings
+      }
+    })();
+  }
+
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -58,6 +80,8 @@ export default function SignupPage() {
           setError(errData.error || "Failed to create account.");
           return;
         }
+        // Import College Board questions in the background (fire-and-forget)
+        importCBQuestions();
         router.push("/parent-dashboard");
         router.refresh();
       } else {

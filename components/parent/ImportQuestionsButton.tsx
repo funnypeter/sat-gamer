@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
-export default function ImportQuestionsButton() {
+export default function ImportQuestionsButton({ existingCount }: { existingCount: number }) {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [count, setCount] = useState(existingCount);
   const [progress, setProgress] = useState({ imported: 0, total: 0 });
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -33,6 +34,7 @@ export default function ImportQuestionsButton() {
         }
 
         totalImported += data.imported;
+        setCount(existingCount + totalImported);
         setProgress({ imported: totalImported, total: data.total });
 
         if (data.done || !data.nextOffset) {
@@ -53,13 +55,27 @@ export default function ImportQuestionsButton() {
       <h3 className="text-lg font-semibold text-white mb-2">
         College Board Questions
       </h3>
-      <p className="text-sm text-gray-400 mb-4">
-        Import real SAT questions from the College Board question bank. This adds ~1,400 official practice questions.
-      </p>
+
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-2xl font-bold text-accent-green">{count}</span>
+        <span className="text-sm text-gray-400">questions imported</span>
+      </div>
+
+      {count > 0 && status === "idle" && (
+        <p className="text-sm text-gray-400 mb-4">
+          Questions are ready. Tap below to check for new ones.
+        </p>
+      )}
+
+      {count === 0 && status === "idle" && (
+        <p className="text-sm text-gray-400 mb-4">
+          Import real SAT questions from the College Board question bank (~1,400 questions).
+        </p>
+      )}
 
       {status === "idle" && (
         <button onClick={handleImport} className="btn-primary">
-          Import Questions
+          {count > 0 ? "Check for New Questions" : "Import Questions"}
         </button>
       )}
 
@@ -71,7 +87,7 @@ export default function ImportQuestionsButton() {
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
             <span className="text-sm">
-              Importing... {progress.imported} questions so far
+              Importing... {progress.imported} added so far
             </span>
           </div>
           {progress.total > 0 && (
@@ -87,7 +103,9 @@ export default function ImportQuestionsButton() {
 
       {status === "done" && (
         <div className="rounded-lg bg-accent-green/10 border border-accent-green/20 px-4 py-3 text-sm text-accent-green">
-          Done! Imported {progress.imported} questions.
+          {progress.imported > 0
+            ? `Added ${progress.imported} new questions!`
+            : "All questions are up to date."}
         </div>
       )}
 

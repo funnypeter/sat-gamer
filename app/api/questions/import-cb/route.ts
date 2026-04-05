@@ -6,6 +6,9 @@ import { fetchPineSATQuestions } from "@/lib/collegeboard/pinesat-client";
 import { transformPineSATQuestion, type TransformedQuestion } from "@/lib/collegeboard/transform";
 import { DSAT_CATEGORIES } from "@/lib/constants";
 
+// Allow up to 60s on Vercel (Pro) or 10s (Hobby)
+export const maxDuration = 60;
+
 const DOMAIN_TO_POSSIBLE_CATEGORIES: Record<string, string[]> = {
   "Information and Ideas": [
     "Central Ideas & Details",
@@ -23,7 +26,7 @@ const DOMAIN_TO_POSSIBLE_CATEGORIES: Record<string, string[]> = {
 };
 
 const BATCH_SIZE = 5;
-const CHUNKS_PER_REQUEST = 4; // 4 batches × 5 questions = 20 per request, fits in ~30s
+const CHUNKS_PER_REQUEST = 1; // 1 batch of 5 per request to stay within Vercel timeout
 
 function buildEnrichmentPrompt(batch: TransformedQuestion[]): string {
   const categoryList = DSAT_CATEGORIES.join(", ");

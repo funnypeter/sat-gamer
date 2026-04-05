@@ -19,6 +19,12 @@ export default async function SettingsPage() {
   const { data: familyRows } = await admin.rpc("get_family_by_id", { family_id_input: profile.family_id });
   const family = Array.isArray(familyRows) ? familyRows[0] : familyRows;
 
+  const { count: cbQuestionCount } = await admin
+    .from("questions")
+    .select("id", { count: "exact", head: true })
+    .eq("generated_by", "collegeboard");
+
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -39,7 +45,7 @@ export default async function SettingsPage() {
 
       <section>
         <h3 className="mb-4 text-lg font-semibold text-white">Question Bank</h3>
-        <ImportQuestionsButton />
+        <ImportQuestionsButton existingCount={cbQuestionCount ?? 0} />
       </section>
 
       {family?.invite_code && (
