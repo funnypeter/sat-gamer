@@ -41,30 +41,29 @@ export async function GET(request: Request) {
     }
 
     // 2. Try unseen College Board questions first
-    const { data: cbCached, error: cbError } = await admin
+    //    Use NOT IN to let Postgres filter out answered questions directly
+    const answeredIds = [...allAnsweredIds, ...sessionAnsweredIds];
+    let cbQuery = admin
       .from("questions")
       .select("*")
-      .eq("generated_by", "collegeboard")
-      .limit(200);
-    if (cbError) console.error("CB query error:", cbError);
-    console.log("CB query returned:", cbCached?.length ?? 0, "questions");
-    if (cbCached && cbCached.length > 0) {
-      const unseen = cbCached.filter((q: { id: string }) => !allAnsweredIds.has(q.id) && !sessionAnsweredIds.has(q.id));
-      console.log("CB unseen:", unseen.length);
-      if (unseen.length > 0) {
-        const pick = unseen[Math.floor(Math.random() * unseen.length)];
-        return NextResponse.json({ question: stripAnswer(pick) });
-      }
+      .or("generated_by.eq.collegeboard,generated_by.eq.collegeboard-classified")
+      .limit(1);
+    if (answeredIds.length > 0) {
+      cbQuery = cbQuery.not("id", "in", `(${answeredIds.join(",")})`);
+    }
+    const { data: cbRow } = await cbQuery;
+    if (cbRow && cbRow.length > 0) {
+      return NextResponse.json({ question: stripAnswer(cbRow[0]) });
     }
 
-    // 3. Fall back to any unseen questions (AI-generated)
-    const { data: allCached } = await admin.from("questions").select("*").limit(200);
-    if (allCached) {
-      const unseen = allCached.filter((q: { id: string }) => !allAnsweredIds.has(q.id) && !sessionAnsweredIds.has(q.id));
-      if (unseen.length > 0) {
-        const pick = unseen[Math.floor(Math.random() * unseen.length)];
-        return NextResponse.json({ question: stripAnswer(pick) });
-      }
+    // 3. Fall back to any unseen questions
+    let fallbackQuery = admin.from("questions").select("*").limit(1);
+    if (answeredIds.length > 0) {
+      fallbackQuery = fallbackQuery.not("id", "in", `(${answeredIds.join(",")})`);
+    }
+    const { data: fallbackRow } = await fallbackQuery;
+    if (fallbackRow && fallbackRow.length > 0) {
+      return NextResponse.json({ question: stripAnswer(fallbackRow[0]) });
     }
 
     // 3. Cache empty or exhausted — generate fresh batch from Gemini
