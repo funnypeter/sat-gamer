@@ -34,24 +34,7 @@ export default function SignupPage() {
 
   // Fire-and-forget: import CB questions in background after parent signup
   function importCBQuestions() {
-    (async () => {
-      let offset = 0;
-      try {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const res = await fetch("/api/questions/import-cb", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ offset }),
-          });
-          const data = await res.json();
-          if (!res.ok || data.done || !data.nextOffset) break;
-          offset = data.nextOffset;
-        }
-      } catch {
-        // Silent fail — import can be retried from settings
-      }
-    })();
+    fetch("/api/questions/import-cb", { method: "POST" }).catch(() => {});
   }
 
   async function handleSignup(e: React.FormEvent) {
