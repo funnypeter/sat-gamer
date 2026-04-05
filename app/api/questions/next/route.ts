@@ -40,17 +40,27 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Try unseen College Board questions first, then AI-generated
-    for (const source of ["cb", null] as const) {
-      let query = admin.from("questions").select("*").limit(200);
-      if (source) query = query.like("generated_by", "collegeboard%");
-      const { data: cached } = await query;
-      if (cached) {
-        const unseen = cached.filter((q: { id: string }) => !allAnsweredIds.has(q.id) && !sessionAnsweredIds.has(q.id));
-        if (unseen.length > 0) {
-          const pick = unseen[Math.floor(Math.random() * unseen.length)];
-          return NextResponse.json({ question: stripAnswer(pick) });
-        }
+    // 2. Try unseen College Board questions first
+    const { data: cbCached } = await admin
+      .from("questions")
+      .select("*")
+      .in("generated_by", ["collegeboard", "collegeboard-classified"])
+      .limit(200);
+    if (cbCached) {
+      const unseen = cbCached.filter((q: { id: string }) => !allAnsweredIds.has(q.id) && !sessionAnsweredIds.has(q.id));
+      if (unseen.length > 0) {
+        const pick = unseen[Math.floor(Math.random() * unseen.length)];
+        return NextResponse.json({ question: stripAnswer(pick) });
+      }
+    }
+
+    // 3. Fall back to any unseen questions (AI-generated)
+    const { data: allCached } = await admin.from("questions").select("*").limit(200);
+    if (allCached) {
+      const unseen = allCached.filter((q: { id: string }) => !allAnsweredIds.has(q.id) && !sessionAnsweredIds.has(q.id));
+      if (unseen.length > 0) {
+        const pick = unseen[Math.floor(Math.random() * unseen.length)];
+        return NextResponse.json({ question: stripAnswer(pick) });
       }
     }
 
