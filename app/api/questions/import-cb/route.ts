@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getGeminiModel } from "@/lib/gemini/client";
@@ -21,6 +21,9 @@ const DOMAIN_TO_POSSIBLE_CATEGORIES: Record<string, string[]> = {
   "Expression of Ideas": ["Rhetoric", "Transitions"],
   "Standard English Conventions": ["Standard English Conventions"],
 };
+
+const BATCH_SIZE = 5;
+const CHUNKS_PER_REQUEST = 4; // 4 batches × 5 questions = 20 per request, fits in ~30s
 
 function buildEnrichmentPrompt(batch: TransformedQuestion[]): string {
   const categoryList = DSAT_CATEGORIES.join(", ");
@@ -65,7 +68,87 @@ ${questions.join("\n")}
 Return ONLY the JSON array, no markdown fences.`;
 }
 
-export async function POST() {
+async function processBatch(
+  admin: ReturnType<typeof createAdminClient>,
+  model: ReturnType<typeof getGeminiModel>,
+  batch: TransformedQuestion[]
+): Promise<{ imported: number; skipped: number; error?: string }> {
+  try {
+    const prompt = buildEnrichmentPrompt(batch);
+    const result = await model.generateContent(prompt);
+    const text = result.response
+      .text()
+      .replace(/```json\s*/g, "")
+      .replace(/```\s*/g, "")
+      .trim();
+
+    const jsonStart = text.indexOf("[");
+    const jsonEnd = text.lastIndexOf("]");
+    const jsonStr =
+      jsonStart >= 0 && jsonEnd > jsonStart
+        ? text.substring(jsonStart, jsonEnd + 1)
+        : text;
+
+    const enrichments = JSON.parse(jsonStr) as {
+      category: string;
+      explanations: Record<string, string>;
+    }[];
+
+    const rows = [];
+    let skipped = 0;
+
+    for (let j = 0; j < batch.length; j++) {
+      const q = batch[j];
+      const enrichment = enrichments[j];
+
+      if (!enrichment) { skipped++; continue; }
+
+      const category = DSAT_CATEGORIES.find((c) => c === enrichment.category);
+      if (!category) { skipped++; continue; }
+
+      const hasAllExplanations =
+        enrichment.explanations &&
+        ["A", "B", "C", "D"].every(
+          (k) => typeof enrichment.explanations[k] === "string"
+        );
+
+      rows.push({
+        category,
+        passage_text: q.passage_text,
+        question_text: q.question_text,
+        choices: q.choices,
+        correct_answer: q.correct_answer,
+        explanations: hasAllExplanations
+          ? enrichment.explanations
+          : {
+              A: enrichment.explanations?.A ?? "",
+              B: enrichment.explanations?.B ?? "",
+              C: enrichment.explanations?.C ?? "",
+              D: enrichment.explanations?.D ?? "",
+            },
+        difficulty_rating: q.difficulty_rating,
+        generated_by: "collegeboard",
+      });
+    }
+
+    if (rows.length > 0) {
+      const { error: insertError } = await admin.from("questions").insert(rows);
+      if (insertError) {
+        return { imported: 0, skipped: batch.length, error: insertError.message };
+      }
+    }
+
+    return { imported: rows.length, skipped };
+  } catch (err) {
+    return {
+      imported: 0,
+      skipped: batch.length,
+      error: err instanceof Error ? err.message : "unknown",
+    };
+  }
+}
+
+export async function POST(request: NextRequest) {
   try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -73,7 +156,6 @@ export async function POST() {
 
     const admin = createAdminClient();
 
-    // Verify parent role
     const { data: profile } = await admin
       .from("users")
       .select("role")
@@ -82,6 +164,10 @@ export async function POST() {
     if (!profile || profile.role !== "parent") {
       return NextResponse.json({ error: "Parent access required" }, { status: 403 });
     }
+
+    // offset = how many questions to skip (already processed in previous calls)
+    const body = await request.json().catch(() => ({}));
+    const offset = Number(body.offset) || 0;
 
     // Fetch all English questions from PineSAT
     const raw = await fetchPineSATQuestions();
@@ -100,122 +186,51 @@ export async function POST() {
       (q) => !existingTexts.has(q.question_text)
     );
 
-    if (newQuestions.length === 0) {
+    const total = newQuestions.length;
+
+    if (total === 0 || offset >= total) {
       return NextResponse.json({
         imported: 0,
-        skipped: transformed.length,
-        errors: [],
-        message: "All questions already imported",
+        skipped: 0,
+        total: transformed.length,
+        remaining: 0,
+        done: true,
       });
     }
 
+    // Process a chunk of questions in this request
+    const chunkSize = BATCH_SIZE * CHUNKS_PER_REQUEST; // 20
+    const chunk = newQuestions.slice(offset, offset + chunkSize);
     const model = getGeminiModel();
-    const BATCH_SIZE = 5;
+
     let imported = 0;
     let skipped = 0;
     const errors: string[] = [];
 
-    for (let i = 0; i < newQuestions.length; i += BATCH_SIZE) {
-      const batch = newQuestions.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < chunk.length; i += BATCH_SIZE) {
+      const batch = chunk.slice(i, i + BATCH_SIZE);
+      const result = await processBatch(admin, model, batch);
+      imported += result.imported;
+      skipped += result.skipped;
+      if (result.error) errors.push(result.error);
 
-      try {
-        const prompt = buildEnrichmentPrompt(batch);
-        const result = await model.generateContent(prompt);
-        const text = result.response
-          .text()
-          .replace(/```json\s*/g, "")
-          .replace(/```\s*/g, "")
-          .trim();
-
-        const jsonStart = text.indexOf("[");
-        const jsonEnd = text.lastIndexOf("]");
-        const jsonStr =
-          jsonStart >= 0 && jsonEnd > jsonStart
-            ? text.substring(jsonStart, jsonEnd + 1)
-            : text;
-
-        const enrichments = JSON.parse(jsonStr) as {
-          category: string;
-          explanations: Record<string, string>;
-        }[];
-
-        const rows = [];
-        for (let j = 0; j < batch.length; j++) {
-          const q = batch[j];
-          const enrichment = enrichments[j];
-
-          if (!enrichment) {
-            skipped++;
-            continue;
-          }
-
-          // Validate category is one of our DSAT categories
-          const category = DSAT_CATEGORIES.find(
-            (c) => c === enrichment.category
-          );
-          if (!category) {
-            errors.push(
-              `Invalid category "${enrichment.category}" for: ${q.question_text.substring(0, 50)}`
-            );
-            skipped++;
-            continue;
-          }
-
-          // Validate explanations have all 4 keys
-          const hasAllExplanations =
-            enrichment.explanations &&
-            ["A", "B", "C", "D"].every(
-              (k) => typeof enrichment.explanations[k] === "string"
-            );
-
-          rows.push({
-            category,
-            passage_text: q.passage_text,
-            question_text: q.question_text,
-            choices: q.choices,
-            correct_answer: q.correct_answer,
-            explanations: hasAllExplanations
-              ? enrichment.explanations
-              : {
-                  A: enrichment.explanations?.A ?? "",
-                  B: enrichment.explanations?.B ?? "",
-                  C: enrichment.explanations?.C ?? "",
-                  D: enrichment.explanations?.D ?? "",
-                },
-            difficulty_rating: q.difficulty_rating,
-            generated_by: "collegeboard",
-          });
-        }
-
-        if (rows.length > 0) {
-          const { error: insertError } = await admin
-            .from("questions")
-            .insert(rows);
-          if (insertError) {
-            errors.push(`Insert error at batch ${i}: ${insertError.message}`);
-            skipped += rows.length;
-          } else {
-            imported += rows.length;
-          }
-        }
-      } catch (err) {
-        errors.push(
-          `Batch ${i} error: ${err instanceof Error ? err.message : "unknown"}`
-        );
-        skipped += batch.length;
-      }
-
-      // Rate limit delay
-      if (i + BATCH_SIZE < newQuestions.length) {
-        await new Promise((r) => setTimeout(r, 2000));
+      // Small delay between Gemini calls
+      if (i + BATCH_SIZE < chunk.length) {
+        await new Promise((r) => setTimeout(r, 1500));
       }
     }
+
+    const nextOffset = offset + chunkSize;
+    const remaining = Math.max(0, total - nextOffset);
 
     return NextResponse.json({
       imported,
       skipped,
       total: transformed.length,
-      errors: errors.slice(0, 20),
+      remaining,
+      nextOffset: remaining > 0 ? nextOffset : null,
+      done: remaining === 0,
+      errors: errors.slice(0, 5),
     });
   } catch (err) {
     console.error("CB import error:", err);
