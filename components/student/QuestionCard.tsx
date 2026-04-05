@@ -7,7 +7,7 @@ interface QuestionCardProps {
   question: Pick<
     Question,
     "id" | "category" | "passage_text" | "question_text" | "choices"
-  >;
+  > & { source?: string };
   onAnswer: (answer: string) => void;
   selectedAnswer: string | null;
   disabled: boolean;
@@ -38,8 +38,19 @@ export default function QuestionCard({
 
   return (
     <div className="space-y-4 animate-slide-up">
-      {/* Category badge */}
-      <div className="badge-blue">{question.category}</div>
+      {/* Category & source badges */}
+      <div className="flex items-center gap-2">
+        <div className="badge-blue">{question.category}</div>
+        {question.source && (
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+            question.source === "College Board"
+              ? "bg-accent-green/10 text-accent-green border border-accent-green/20"
+              : "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+          }`}>
+            {question.source}
+          </span>
+        )}
+      </div>
 
       {/* Passage */}
       <div className="card-glass p-4">

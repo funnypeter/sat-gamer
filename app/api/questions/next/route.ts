@@ -82,7 +82,8 @@ export async function GET(request: Request) {
 }
 
 function stripAnswer(q: Record<string, unknown>) {
-  return { id: q.id, category: q.category, passage_text: q.passage_text, question_text: q.question_text, choices: q.choices, difficulty_rating: q.difficulty_rating };
+  const source = typeof q.generated_by === "string" && (q.generated_by as string).startsWith("collegeboard") ? "College Board" : "AI Generated";
+  return { id: q.id, category: q.category, passage_text: q.passage_text, question_text: q.question_text, choices: q.choices, difficulty_rating: q.difficulty_rating, source };
 }
 
 async function generateAndServe(admin: ReturnType<typeof createAdminClient>, category: DsatCategory, band: string) {
