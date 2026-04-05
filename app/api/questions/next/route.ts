@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
     // 2. Try unseen College Board questions first
     //    Use NOT IN to let Postgres filter out answered questions directly
-    const answeredIds = [...allAnsweredIds, ...sessionAnsweredIds];
+    const answeredIds = Array.from(allAnsweredIds).concat(Array.from(sessionAnsweredIds));
     let cbQuery = admin
       .from("questions")
       .select("*")
