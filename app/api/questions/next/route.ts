@@ -41,13 +41,16 @@ export async function GET(request: Request) {
     }
 
     // 2. Try unseen College Board questions first
-    const { data: cbCached } = await admin
+    const { data: cbCached, error: cbError } = await admin
       .from("questions")
       .select("*")
-      .in("generated_by", ["collegeboard", "collegeboard-classified"])
+      .eq("generated_by", "collegeboard")
       .limit(200);
-    if (cbCached) {
+    if (cbError) console.error("CB query error:", cbError);
+    console.log("CB query returned:", cbCached?.length ?? 0, "questions");
+    if (cbCached && cbCached.length > 0) {
       const unseen = cbCached.filter((q: { id: string }) => !allAnsweredIds.has(q.id) && !sessionAnsweredIds.has(q.id));
+      console.log("CB unseen:", unseen.length);
       if (unseen.length > 0) {
         const pick = unseen[Math.floor(Math.random() * unseen.length)];
         return NextResponse.json({ question: stripAnswer(pick) });
