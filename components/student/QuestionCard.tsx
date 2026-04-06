@@ -3,6 +3,11 @@
 import { useState } from "react";
 import type { Question } from "@/lib/types/database";
 
+/** Sanitize HTML to only allow safe formatting tags (u, b, i, em, strong, br) */
+function sanitizeHtml(html: string): string {
+  return html.replace(/<\/?(?!\/?(u|b|i|em|strong|br)\b)[^>]*>/gi, "");
+}
+
 interface QuestionCardProps {
   question: Pick<
     Question,
@@ -54,15 +59,17 @@ export default function QuestionCard({
 
       {/* Passage */}
       <div className="card-glass p-4">
-        <p className="text-base leading-relaxed text-gray-100">
-          {question.passage_text}
-        </p>
+        <p
+          className="text-base leading-relaxed text-gray-100"
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.passage_text) }}
+        />
       </div>
 
       {/* Question */}
-      <p className="text-lg font-semibold text-white leading-relaxed">
-        {question.question_text}
-      </p>
+      <p
+        className="text-lg font-semibold text-white leading-relaxed"
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.question_text) }}
+      />
 
       {/* Answer choices */}
       <div className="space-y-3">
