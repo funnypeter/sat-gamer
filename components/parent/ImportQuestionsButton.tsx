@@ -2,34 +2,77 @@
 
 import { useState } from "react";
 
+const DOMAINS = [
+  { code: "INI", label: "Information & Ideas" },
+  { code: "CAS", label: "Craft & Structure" },
+  { code: "EOI", label: "Expression of Ideas" },
+  { code: "SEC", label: "Standard English Conventions" },
+] as const;
+
+type DomainCode = (typeof DOMAINS)[number]["code"];
+
+interface DomainResult {
+  inserted: number;
+  failedFetches: number;
+}
+
 export default function ImportQuestionsButton({ existingCount }: { existingCount: number }) {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [count, setCount] = useState(existingCount);
-  const [imported, setImported] = useState(0);
+  const [purge, setPurge] = useState(false);
+  const [currentDomain, setCurrentDomain] = useState<DomainCode | null>(null);
+  const [results, setResults] = useState<Record<string, DomainResult>>({});
   const [errorMsg, setErrorMsg] = useState("");
+
+  async function importDomain(
+    domain: DomainCode,
+    purgeFirst: boolean
+  ): Promise<DomainResult> {
+    const res = await fetch("/api/questions/import-cb", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain, purge: purgeFirst }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `Import failed for ${domain}`);
+    }
+    return {
+      inserted: data.inserted ?? 0,
+      failedFetches: data.failedFetches ?? 0,
+    };
+  }
 
   async function handleImport() {
     setStatus("loading");
     setErrorMsg("");
+    setResults({});
+
+    let totalInserted = purge ? 0 : count;
+    let purgeRemaining = purge;
 
     try {
-      const res = await fetch("/api/questions/import-cb", { method: "POST" });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus("error");
-        setErrorMsg(data.error || "Import failed");
-        return;
+      for (const { code } of DOMAINS) {
+        setCurrentDomain(code);
+        const result = await importDomain(code, purgeRemaining);
+        purgeRemaining = false; // only purge on the first call
+        setResults((prev) => ({ ...prev, [code]: result }));
+        totalInserted += result.inserted;
+        setCount(totalInserted);
       }
-
-      setImported(data.imported);
-      setCount(existingCount + data.imported);
+      setCurrentDomain(null);
       setStatus("done");
-    } catch {
+    } catch (err) {
+      setCurrentDomain(null);
       setStatus("error");
-      setErrorMsg("Network error. Please try again.");
+      setErrorMsg(err instanceof Error ? err.message : "Network error. Please try again.");
     }
   }
+
+  const totalInsertedThisRun = Object.values(results).reduce(
+    (sum, r) => sum + r.inserted,
+    0
+  );
 
   return (
     <div className="card-glass p-6 border border-accent-green/20 bg-accent-green/5">
@@ -43,25 +86,72 @@ export default function ImportQuestionsButton({ existingCount }: { existingCount
       </div>
 
       {status === "idle" && (
-        <button onClick={handleImport} className="btn-primary">
-          {count > 0 ? "Check for New Questions" : "Import Questions"}
-        </button>
+        <div className="space-y-3">
+          {existingCount > 0 && (
+            <label className="flex items-start gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={purge}
+                onChange={(e) => setPurge(e.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-medium text-white">
+                  Delete existing College Board questions first
+                </span>
+                <br />
+                <span className="text-gray-400">
+                  Use this once to wipe old PineSAT-sourced rows and re-import from the official source.
+                </span>
+              </span>
+            </label>
+          )}
+          <button onClick={handleImport} className="btn-primary">
+            {count > 0 && !purge
+              ? "Check for New Questions"
+              : purge
+              ? "Purge & Re-import All"
+              : "Import All Questions"}
+          </button>
+        </div>
       )}
 
       {status === "loading" && (
-        <div className="flex items-center gap-3 text-accent-blue">
-          <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          <span className="text-sm">Importing...</span>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 text-accent-blue">
+            <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm">
+              Importing {currentDomain ? DOMAINS.find((d) => d.code === currentDomain)?.label : "..."}
+            </span>
+          </div>
+          <ul className="text-xs text-gray-400 space-y-1 pl-8">
+            {DOMAINS.map(({ code, label }) => {
+              const r = results[code];
+              const isCurrent = currentDomain === code;
+              const isDone = !!r;
+              return (
+                <li key={code} className="flex items-center gap-2">
+                  <span>
+                    {isDone ? "✓" : isCurrent ? "…" : "·"}
+                  </span>
+                  <span className={isDone ? "text-accent-green" : isCurrent ? "text-accent-blue" : ""}>
+                    {label}
+                    {isDone && ` — ${r.inserted} added`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
       {status === "done" && (
         <div className="rounded-lg bg-accent-green/10 border border-accent-green/20 px-4 py-3 text-sm text-accent-green">
-          {imported > 0
-            ? `Added ${imported} questions!`
+          {totalInsertedThisRun > 0
+            ? `Added ${totalInsertedThisRun} questions across ${Object.keys(results).length} domains.`
             : "All questions are up to date."}
         </div>
       )}
