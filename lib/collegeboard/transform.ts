@@ -74,25 +74,44 @@ export function mapSkillToCategory(
 }
 
 /**
- * The CB stimulus uses an accessibility pattern for fill-in-the-blank
- * markers: a visible underscore span plus a screen-reader-only "blank"
- * span. Our renderer doesn't ship the sr-only CSS class, so the literal
- * word "blank" leaks into the visible passage. Replace the whole thing
- * with a plain ______ that renders correctly.
+ * The CB stimulus uses several non-standard formatting conventions
+ * that don't survive a naive sanitize pass:
  *
- * Also collapse any other tags we don't allow (e.g. <span>) so they
- * don't survive into the DB and clutter the prose.
+ *   1. Fill-in-the-blank: a visible underscore span plus a screen-
+ *      reader-only "blank" span. Our renderer doesn't ship the
+ *      sr-only CSS class, so the literal word "blank" leaks into the
+ *      passage. Replace the whole pair with plain underscores.
+ *
+ *   2. Underlined "Referenced Content" portions in TSP questions.
+ *      CB uses TWO different markups for this:
+ *        a. <span role="region"><u>...</u></span> — has a real <u>
+ *           inside, survives our span-stripper.
+ *        b. <span style="text-decoration: underline;" ...>...</span>
+ *           — uses inline CSS with NO <u> tag. If we just strip the
+ *           span, the underline is lost and questions that ask "what
+ *           is the function of the underlined sentence" become
+ *           unanswerable. Convert these to <u>...</u> first.
+ *
+ *   3. Any remaining <span> wrappers — strip the tag itself but
+ *      keep the inner content so prose isn't lost.
  */
 function cleanStimulus(html: string): string {
   return html
-    // Fill-in-the-blank accessibility pair → plain underscores
+    // 1. Fill-in-the-blank accessibility pair → plain underscores
     .replace(
       /<span\s+aria-hidden="true">([_\s]+)<\/span>\s*<span\s+class="sr-only">\s*blank\s*<\/span>/gi,
       "______"
     )
-    // Stray screen-reader-only spans (defensive)
+    // 1b. Stray screen-reader-only spans (defensive)
     .replace(/<span\s+class="sr-only">[\s\S]*?<\/span>/gi, "")
-    // Strip remaining span wrappers but keep their content
+    // 2. CSS-underlined spans → <u> tags. Match any <span> whose style
+    //    attribute contains "text-decoration: underline" (with or
+    //    without spaces, and tolerating other style declarations).
+    .replace(
+      /<span\b[^>]*\bstyle\s*=\s*"[^"]*text-decoration\s*:\s*underline[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,
+      "<u>$1</u>"
+    )
+    // 3. Strip remaining span wrappers but keep their content
     .replace(/<\/?span[^>]*>/gi, "")
     .trim();
 }
