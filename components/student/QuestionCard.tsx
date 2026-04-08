@@ -8,6 +8,25 @@ function sanitizeHtml(html: string): string {
   return html.replace(/<\/?(?!\/?(u|b|i|em|strong|br)\b)[^>]*>/gi, "");
 }
 
+/**
+ * Detects when passage_text was filled with a meta-description of the passage
+ * (e.g. "The author of this passage wants to...") instead of actual passage
+ * prose. When that happens we hide the broken passage card so the user sees
+ * one coherent question instead of two stacked stems with no source text.
+ */
+function isMetaPromptPassage(text: string | null | undefined): boolean {
+  if (!text) return true;
+  const t = text.trim();
+  if (!t) return true;
+  const patterns: RegExp[] = [
+    /\bthe author of (this|the) passage\b/i,
+    /\bthe (writer|author|speaker) (wants|aims|intends|seeks)\b/i,
+    /\bthis passage (is about|describes|discusses|argues|explains)\b/i,
+    /\bwhat is the most likely reason\b/i,
+  ];
+  return patterns.some((re) => re.test(t));
+}
+
 interface QuestionCardProps {
   question: Pick<
     Question,
@@ -25,6 +44,7 @@ export default function QuestionCard({
   disabled,
 }: QuestionCardProps) {
   const [eliminated, setEliminated] = useState<Set<string>>(new Set());
+  const passageIsBroken = isMetaPromptPassage(question.passage_text);
 
   function toggleEliminate(label: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -57,18 +77,33 @@ export default function QuestionCard({
         )}
       </div>
 
-      {/* Passage */}
-      <div className="card-glass p-4">
-        <p
-          className="text-base leading-relaxed text-gray-100"
-          dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.passage_text) }}
-        />
-      </div>
+      {/* Passage — hidden when the row is broken (meta-prompt instead of prose) */}
+      {passageIsBroken ? (
+        <div className="card-glass border border-amber-500/30 bg-amber-500/5 p-4">
+          <p className="text-sm text-amber-300">
+            This question is missing its passage. Answer based on the question
+            stem alone, or skip it.
+          </p>
+        </div>
+      ) : (
+        <div className="card-glass p-4">
+          <p
+            className="text-base leading-relaxed text-gray-100"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.passage_text) }}
+          />
+        </div>
+      )}
 
-      {/* Question */}
+      {/* Question. If the passage is broken, the meta-prompt stored in
+          passage_text is actually the real question — prefer it over the
+          (usually duplicate) question_text. */}
       <p
         className="text-lg font-semibold text-white leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.question_text) }}
+        dangerouslySetInnerHTML={{
+          __html: sanitizeHtml(
+            passageIsBroken ? question.passage_text : question.question_text
+          ),
+        }}
       />
 
       {/* Answer choices */}
