@@ -4,11 +4,33 @@ import type {
   QbankQuestionDetail,
 } from "./qbank-client";
 
-const DIFFICULTY_MAP: Record<"E" | "M" | "H", number> = {
+/**
+ * Coarse fallback when CB's finer-grained score_band_range_cd is missing.
+ * Used only if the index entry doesn't include a usable band.
+ */
+const DIFFICULTY_LABEL_FALLBACK: Record<"E" | "M" | "H", number> = {
   E: 375,
   M: 525,
   H: 700,
 };
+
+/**
+ * Map CB's score_band_range_cd (1-7) to a numeric difficulty rating
+ * that lines up with our DIFFICULTY_BANDS in lib/constants.ts:
+ *
+ *   easy:   300-450  → bands 1, 2, 3 (300, 375, 450)
+ *   medium: 450-600  → bands 3, 4, 5 (450, 525, 600)
+ *   hard:   600-800  → bands 5, 6, 7 (600, 675, 750)
+ *
+ * Linear: rating = 300 + (band - 1) * 75. Gives 7 distinct values
+ * evenly spread across the playable range, replacing the 3-bucket
+ * E/M/H mapping that previously meant ~530 questions per bucket.
+ */
+function difficultyFromScoreBand(band: number | null | undefined): number | null {
+  if (typeof band !== "number") return null;
+  if (band < 1 || band > 7) return null;
+  return 300 + Math.round((band - 1) * 75);
+}
 
 /**
  * Map College Board's skill code (the granular sub-skill within a domain)
@@ -181,7 +203,10 @@ export function transformQbankQuestion(
       choices,
       correct_answer: letter,
       explanations,
-      difficulty_rating: DIFFICULTY_MAP[index.difficulty] ?? 525,
+      difficulty_rating:
+        difficultyFromScoreBand(index.score_band_range_cd) ??
+        DIFFICULTY_LABEL_FALLBACK[index.difficulty] ??
+        525,
       generated_by: "collegeboard",
     },
   };

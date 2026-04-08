@@ -5,11 +5,20 @@ import type { Question } from "@/lib/types/database";
  * Select the next question for a student.
  *
  * Priority:
- * 1. Spaced repetition items due today
- * 2. Elo-matched unseen questions weighted toward weakest categories
- * 3. If pool is low, returns null so the caller can trigger generation
+ * 1. Spaced repetition items due today (any source)
+ * 2. Elo-matched unseen College Board questions in the student's
+ *    weakest categories
+ * 3. Elo-matched unseen College Board questions in any category
+ * 4. Elo-matched unseen questions of any source in weakest categories
+ * 5. Elo-matched unseen questions of any source in any category
+ * 6. Any unseen question at all (any difficulty, any source)
+ * 7. Returns null so the caller can trigger Gemini generation
  *
  * Never returns a question already answered in the current session.
+ *
+ * The CB-first preference at steps 2-3 means a student is always
+ * served authentic College Board content when an Elo-appropriate one
+ * exists, before falling back to AI-generated material.
  */
 export async function selectNextQuestion(
   supabase: SupabaseClient,
@@ -78,26 +87,25 @@ export async function selectNextQuestion(
 
   const eloRange = 150; // wider range to find more candidates
 
-  // Try weak categories first
+  const eloFilter = { eloMin: targetElo - eloRange, eloMax: targetElo + eloRange };
+
+  // Build the cascade. Each tier tries CB first, then any source.
+  // The earliest tier that returns a question wins.
+  const tiers: Array<Parameters<typeof findUnseen>[3]> = [];
   if (targetCategories.length > 0) {
-    const question = await findUnseen(supabase, answeredIds, sessionAnsweredIds, {
-      categories: targetCategories,
-      eloMin: targetElo - eloRange,
-      eloMax: targetElo + eloRange,
-    });
-    if (question) return question;
+    tiers.push({ ...eloFilter, categories: targetCategories, cbOnly: true });
   }
+  tiers.push({ ...eloFilter, cbOnly: true });
+  if (targetCategories.length > 0) {
+    tiers.push({ ...eloFilter, categories: targetCategories });
+  }
+  tiers.push({ ...eloFilter });
+  tiers.push({}); // last resort: any unseen question at any difficulty
 
-  // Try any category in Elo range
-  const question = await findUnseen(supabase, answeredIds, sessionAnsweredIds, {
-    eloMin: targetElo - eloRange,
-    eloMax: targetElo + eloRange,
-  });
-  if (question) return question;
-
-  // Try any unseen question at all (any difficulty)
-  const anyQuestion = await findUnseen(supabase, answeredIds, sessionAnsweredIds, {});
-  if (anyQuestion) return anyQuestion;
+  for (const filters of tiers) {
+    const q = await findUnseen(supabase, answeredIds, sessionAnsweredIds, filters);
+    if (q) return q;
+  }
 
   // All questions exhausted — return null so caller triggers generation
   return null;
@@ -107,7 +115,13 @@ async function findUnseen(
   supabase: SupabaseClient,
   answeredIds: Set<string>,
   sessionAnsweredIds: Set<string>,
-  filters: { categories?: string[]; eloMin?: number; eloMax?: number }
+  filters: {
+    categories?: string[];
+    eloMin?: number;
+    eloMax?: number;
+    /** When true, restrict to authentic College Board questions. */
+    cbOnly?: boolean;
+  }
 ): Promise<Question | null> {
   let query = supabase.from("questions").select("*").limit(100);
 
@@ -119,6 +133,13 @@ async function findUnseen(
   }
   if (filters.eloMax !== undefined) {
     query = query.lte("difficulty_rating", filters.eloMax);
+  }
+  if (filters.cbOnly) {
+    // Match both the canonical "collegeboard" tag and any classified
+    // variant the importer might emit in the future.
+    query = query.or(
+      "generated_by.eq.collegeboard,generated_by.eq.collegeboard-classified"
+    );
   }
 
   const { data: candidates } = await query;
