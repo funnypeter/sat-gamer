@@ -39,10 +39,22 @@ supabase/migrations/   numbered SQL migrations
 
 ## Question pipeline
 
-1. `lib/gemini/prompts.ts` builds a category- and difficulty-specific prompt.
-2. `app/api/questions/generate/route.ts` calls Gemini, parses JSON, validates with `GeneratedQuestionsArraySchema` from `lib/gemini/schema.ts`, then inserts via the **admin client** (bypasses RLS).
-3. `app/api/questions/next/route.ts` serves the next question to a student based on Elo matching (`lib/engine/question-selector.ts`).
-4. `components/student/QuestionCard.tsx` renders it. Sanitizes HTML to allow only `u/b/i/em/strong/br`.
+There are **two question sources**, both insert into the same `questions` table:
+
+### 1. Gemini-generated (`generated_by = 'gemini'`)
+- `lib/gemini/prompts.ts` builds a category- and difficulty-specific prompt.
+- `app/api/questions/generate/route.ts` calls Gemini, parses JSON, validates with `GeneratedQuestionsArraySchema` from `lib/gemini/schema.ts` (which rejects meta-prompt passages), then inserts via the **admin client** (bypasses RLS).
+
+### 2. Official College Board (`generated_by = 'collegeboard'`)
+- Source: College Board's undocumented but public Digital QBank API at `qbank-api.collegeboard.org` (the same backend that powers `satsuitequestionbank.collegeboard.org`).
+- `lib/collegeboard/qbank-client.ts` — typed client for the two endpoints (`get-questions` index, `get-question` detail). Polite throttling (5-way concurrency, 200ms inter-batch delay).
+- `lib/collegeboard/transform.ts` — converts CB's HTML question shape into our `questions` row shape, maps `skill_cd` → DSAT category, maps the answer-id-as-UUID → A/B/C/D letter, and cleans CB's accessibility spans (`<span aria-hidden="true">______</span><span class="sr-only">blank</span>`) to plain `______`.
+- `app/api/questions/import-cb/route.ts` — parent-only route. POST `{}` returns the list of domains; POST `{domain: 'INI'|'CAS'|'EOI'|'SEC'}` imports one whole domain and returns `nextDomain`. POST `{purge: true}` first wipes existing CB rows. Bound to `maxDuration = 60` (Hobby plan limit) — one domain per call so it fits.
+- **Do not** revive PineSAT/OpenSAT (`pinesat.com/api/questions`). It mixes real CB questions with AI-generated `random_id_*` content, returns the literal string `"null"` for missing passages, and strips all underline markers. The dedicated client was deleted.
+
+### Serving
+- `app/api/questions/next/route.ts` serves the next question to a student based on Elo matching (`lib/engine/question-selector.ts`).
+- `components/student/QuestionCard.tsx` renders it. Sanitizes HTML to allow `u/b/i/em/strong/br/p/sup/sub`. Has defensive rendering for the meta-prompt bug (see below).
 
 ## Known issue: meta-prompt passages
 

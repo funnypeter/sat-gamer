@@ -3,9 +3,13 @@
 import { useState } from "react";
 import type { Question } from "@/lib/types/database";
 
-/** Sanitize HTML to only allow safe formatting tags (u, b, i, em, strong, br) */
+/** Sanitize HTML to only allow safe formatting tags.
+ *  - u/b/i/em/strong/br: inline formatting
+ *  - p: College Board passages wrap each paragraph in <p>
+ *  - sup/sub: footnote markers and chemical formulas
+ */
 function sanitizeHtml(html: string): string {
-  return html.replace(/<\/?(?!\/?(u|b|i|em|strong|br)\b)[^>]*>/gi, "");
+  return html.replace(/<\/?(?!\/?(u|b|i|em|strong|br|p|sup|sub)\b)[^>]*>/gi, "");
 }
 
 /**
