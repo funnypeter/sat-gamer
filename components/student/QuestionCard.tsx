@@ -2,34 +2,7 @@
 
 import { useState } from "react";
 import type { Question } from "@/lib/types/database";
-
-/** Sanitize HTML to only allow safe formatting tags.
- *  - u/b/i/em/strong/br: inline formatting
- *  - p: College Board passages wrap each paragraph in <p>
- *  - sup/sub: footnote markers and chemical formulas
- */
-function sanitizeHtml(html: string): string {
-  return html.replace(/<\/?(?!\/?(u|b|i|em|strong|br|p|sup|sub)\b)[^>]*>/gi, "");
-}
-
-/**
- * Detects when passage_text was filled with a meta-description of the passage
- * (e.g. "The author of this passage wants to...") instead of actual passage
- * prose. When that happens we hide the broken passage card so the user sees
- * one coherent question instead of two stacked stems with no source text.
- */
-function isMetaPromptPassage(text: string | null | undefined): boolean {
-  if (!text) return true;
-  const t = text.trim();
-  if (!t) return true;
-  const patterns: RegExp[] = [
-    /\bthe author of (this|the) passage\b/i,
-    /\bthe (writer|author|speaker) (wants|aims|intends|seeks)\b/i,
-    /\bthis passage (is about|describes|discusses|argues|explains)\b/i,
-    /\bwhat is the most likely reason\b/i,
-  ];
-  return patterns.some((re) => re.test(t));
-}
+import { sanitizeHtml, isMetaPromptPassage } from "@/lib/sanitize";
 
 interface QuestionCardProps {
   question: Pick<
@@ -168,11 +141,12 @@ export default function QuestionCard({
                   >
                     {choice.label}
                   </span>
-                  <span className={`text-base leading-relaxed ${
-                    isEliminated ? "line-through text-gray-600" : "text-gray-100"
-                  }`}>
-                    {choice.text}
-                  </span>
+                  <span
+                    className={`text-base leading-relaxed ${
+                      isEliminated ? "line-through text-gray-600" : "text-gray-100"
+                    }`}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(choice.text) }}
+                  />
                 </div>
               </button>
             </div>

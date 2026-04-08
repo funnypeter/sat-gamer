@@ -1,6 +1,7 @@
 "use client";
 
 import type { QuestionChoice } from "@/lib/types/database";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 interface FeedbackOverlayProps {
   isCorrect: boolean;
@@ -109,11 +110,17 @@ export default function FeedbackOverlay({
                   {choice.label}
                 </span>
                 <div className="flex-1 space-y-1">
-                  <p className="text-sm text-gray-200">{choice.text}</p>
+                  <p
+                    className="text-sm text-gray-200"
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(choice.text) }}
+                  />
                   {explanations[choice.label] && (
-                    <p className="text-xs text-gray-400 italic">
-                      {explanations[choice.label]}
-                    </p>
+                    <div
+                      className="text-xs text-gray-400 italic [&_p]:mb-2 [&_p:last-child]:mb-0"
+                      dangerouslySetInnerHTML={{
+                        __html: sanitizeHtml(explanations[choice.label]),
+                      }}
+                    />
                   )}
                 </div>
               </div>
