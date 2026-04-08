@@ -96,21 +96,33 @@ export async function POST(request: Request) {
       delayMs: 200,
     });
 
-    // 4. Transform and filter.
+    // 4. Transform and filter, tallying rejection reasons for diagnostics.
     const indexById = new Map(index.map((q) => [q.external_id, q]));
-    const rows = details
-      .map((d) => {
-        const idx = indexById.get(d.externalid);
-        if (!idx) return null;
-        return transformQbankQuestion(idx, d);
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null);
+    const rows: import("@/lib/collegeboard/transform").TransformedQuestion[] = [];
+    const rejections: Record<string, number> = {};
+    let missingIndex = 0;
+    for (const d of details) {
+      const idx = indexById.get(d.externalid);
+      if (!idx) {
+        missingIndex += 1;
+        continue;
+      }
+      const result = transformQbankQuestion(idx, d);
+      if (result.ok) {
+        rows.push(result.question);
+      } else {
+        rejections[result.reason] = (rejections[result.reason] ?? 0) + 1;
+      }
+    }
 
     if (rows.length === 0) {
       return NextResponse.json({
         domain,
+        indexCount: index.length,
         fetched: details.length,
         failedFetches: failed.length,
+        missingIndex,
+        rejections,
         inserted: 0,
         message: "No importable questions in this domain after filtering",
       });
@@ -145,6 +157,8 @@ export async function POST(request: Request) {
       indexCount: index.length,
       fetched: details.length,
       failedFetches: failed.length,
+      missingIndex,
+      rejections,
       inserted,
       nextDomain: nextDomain ?? null,
       done: !nextDomain,

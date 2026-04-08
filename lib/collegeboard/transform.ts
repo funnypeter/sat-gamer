@@ -113,34 +113,50 @@ export interface TransformedQuestion {
   generated_by: string;
 }
 
+export type TransformResult =
+  | { ok: true; question: TransformedQuestion }
+  | { ok: false; reason: string };
+
 /**
  * Convert a College Board QBank question (index entry + detail) into the
- * shape our `questions` table expects. Returns null when the question
- * cannot be safely imported (image-based, non-mcq, malformed answer
- * mapping, etc.) so the importer can skip it.
+ * shape our `questions` table expects. Returns `{ ok: false, reason }`
+ * for questions that can't be safely imported so the caller can tally
+ * rejection reasons for diagnostics.
  */
 export function transformQbankQuestion(
   index: QbankIndexEntry,
   detail: QbankQuestionDetail
-): TransformedQuestion | null {
-  // Only multiple-choice questions are supported by our renderer.
-  if (detail.type !== "mcq") return null;
-
-  // Image-based questions don't render — CB marks them with a non-empty ibn.
-  if (index.ibn) return null;
-
-  // We need exactly 4 choices.
-  if (!detail.answerOptions || detail.answerOptions.length !== 4) return null;
+): TransformResult {
+  if (detail.type !== "mcq") {
+    return { ok: false, reason: `not_mcq:${detail.type}` };
+  }
+  if (index.ibn) {
+    return { ok: false, reason: "image_based_ibn" };
+  }
+  if (!detail.answerOptions || detail.answerOptions.length !== 4) {
+    return {
+      ok: false,
+      reason: `wrong_choice_count:${detail.answerOptions?.length ?? 0}`,
+    };
+  }
 
   const letter = mapCorrectAnswerToLetter(detail.answerOptions, detail.correct_answer);
-  if (!letter) return null;
+  if (!letter) {
+    return {
+      ok: false,
+      reason: `correct_answer_unmappable:${JSON.stringify(detail.correct_answer)}`,
+    };
+  }
 
   const category = mapSkillToCategory(index.skill_cd, detail.stimulus ?? "");
-  if (!category) return null;
+  if (!category) {
+    return { ok: false, reason: `unknown_skill_cd:${index.skill_cd}` };
+  }
 
   const passage = cleanStimulus(detail.stimulus ?? "");
   const stem = cleanStimulus(detail.stem ?? "");
-  if (!passage || !stem) return null;
+  if (!passage) return { ok: false, reason: "empty_passage" };
+  if (!stem) return { ok: false, reason: "empty_stem" };
 
   const choices = detail.answerOptions.map((opt, i) => ({
     label: ["A", "B", "C", "D"][i],
@@ -154,13 +170,16 @@ export function transformQbankQuestion(
   explanations[letter] = detail.rationale ?? "";
 
   return {
-    category,
-    passage_text: passage,
-    question_text: stem,
-    choices,
-    correct_answer: letter,
-    explanations,
-    difficulty_rating: DIFFICULTY_MAP[index.difficulty] ?? 525,
-    generated_by: "collegeboard",
+    ok: true,
+    question: {
+      category,
+      passage_text: passage,
+      question_text: stem,
+      choices,
+      correct_answer: letter,
+      explanations,
+      difficulty_rating: DIFFICULTY_MAP[index.difficulty] ?? 525,
+      generated_by: "collegeboard",
+    },
   };
 }

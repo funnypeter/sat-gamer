@@ -13,7 +13,9 @@ type DomainCode = (typeof DOMAINS)[number]["code"];
 
 interface DomainResult {
   inserted: number;
+  fetched: number;
   failedFetches: number;
+  rejections: Record<string, number>;
 }
 
 export default function ImportQuestionsButton({ existingCount }: { existingCount: number }) {
@@ -39,7 +41,9 @@ export default function ImportQuestionsButton({ existingCount }: { existingCount
     }
     return {
       inserted: data.inserted ?? 0,
+      fetched: data.fetched ?? 0,
       failedFetches: data.failedFetches ?? 0,
+      rejections: data.rejections ?? {},
     };
   }
 
@@ -133,13 +137,21 @@ export default function ImportQuestionsButton({ existingCount }: { existingCount
               const isCurrent = currentDomain === code;
               const isDone = !!r;
               return (
-                <li key={code} className="flex items-center gap-2">
+                <li key={code} className="flex items-start gap-2">
                   <span>
                     {isDone ? "✓" : isCurrent ? "…" : "·"}
                   </span>
                   <span className={isDone ? "text-accent-green" : isCurrent ? "text-accent-blue" : ""}>
                     {label}
-                    {isDone && ` — ${r.inserted} added`}
+                    {isDone && ` — ${r.inserted} added (fetched ${r.fetched}, failed ${r.failedFetches})`}
+                    {isDone && Object.keys(r.rejections).length > 0 && (
+                      <div className="text-amber-400 text-[11px] mt-0.5 pl-2">
+                        rejected:{" "}
+                        {Object.entries(r.rejections)
+                          .map(([reason, n]) => `${reason} ×${n}`)
+                          .join(", ")}
+                      </div>
+                    )}
                   </span>
                 </li>
               );
