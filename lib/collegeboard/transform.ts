@@ -76,18 +76,21 @@ function cleanStimulus(html: string): string {
 }
 
 /**
- * The CB API returns the correct answer as the option's UUID, not as a
- * letter. Map it to A/B/C/D by position in the answerOptions array.
+ * CB returns the correct answer as a letter directly in the
+ * `correct_answer` field (e.g. ["A"]). The corresponding option UUID
+ * lives separately in the `keys` field. Validate and return the letter.
  */
 function mapCorrectAnswerToLetter(
-  answerOptions: { id: string }[],
-  correctAnswerIds: string[]
+  _answerOptions: { id: string }[],
+  correctAnswer: string[]
 ): string | null {
-  const correctId = correctAnswerIds[0];
-  if (!correctId) return null;
-  const idx = answerOptions.findIndex((o) => o.id === correctId);
-  if (idx < 0 || idx > 3) return null;
-  return ["A", "B", "C", "D"][idx];
+  const value = correctAnswer?.[0];
+  if (!value) return null;
+  const upper = value.trim().toUpperCase();
+  if (upper === "A" || upper === "B" || upper === "C" || upper === "D") {
+    return upper;
+  }
+  return null;
 }
 
 /**
