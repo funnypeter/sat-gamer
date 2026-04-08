@@ -3,6 +3,50 @@
 import type { QuestionChoice } from "@/lib/types/database";
 import { sanitizeHtml } from "@/lib/sanitize";
 
+/**
+ * College Board ships one monolithic rationale per question that discusses
+ * all four choices (e.g. "Choice D is the best answer because... Choice A
+ * is incorrect because... Choice B is incorrect because..."). Our importer
+ * stores the whole thing on the correct answer's letter, which means
+ * picking C and reading the explanation under D dumps a 400-word wall on
+ * the student.
+ *
+ * Detect that pattern and split it into per-choice chunks so each letter
+ * shows only its own slice. Falls back to the original explanations
+ * object if the text doesn't match the CB pattern (Gemini explanations
+ * are already per-choice).
+ */
+function splitCbRationale(
+  explanations: Record<string, string>
+): Record<string, string> {
+  const nonEmpty = Object.entries(explanations).filter(
+    ([, v]) => typeof v === "string" && v.trim().length > 0
+  );
+  // If multiple letters already have content, the explanations are
+  // already per-choice (Gemini case) — leave them alone.
+  if (nonEmpty.length !== 1) return explanations;
+
+  const [, monolithic] = nonEmpty[0];
+  // Walk the text finding "Choice X is the best answer | correct | incorrect"
+  // markers, then slice between consecutive marker positions.
+  const markerRe = /Choice\s+([A-D])\s+is\s+(?:the\s+best\s+answer|correct|incorrect)/gi;
+  const matches: Array<{ letter: string; start: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = markerRe.exec(monolithic)) !== null) {
+    matches.push({ letter: m[1].toUpperCase(), start: m.index });
+  }
+  // Need at least 2 markers to be confident we're parsing the CB pattern.
+  if (matches.length < 2) return explanations;
+
+  const split: Record<string, string> = { A: "", B: "", C: "", D: "" };
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].start;
+    const end = i + 1 < matches.length ? matches[i + 1].start : monolithic.length;
+    split[matches[i].letter] = monolithic.substring(start, end).trim();
+  }
+  return split;
+}
+
 interface FeedbackOverlayProps {
   isCorrect: boolean;
   correctAnswer: string;
@@ -20,6 +64,7 @@ export default function FeedbackOverlay({
   choices,
   onNext,
 }: FeedbackOverlayProps) {
+  const perChoiceExplanations = splitCbRationale(explanations);
   return (
     <div className="space-y-4 animate-slide-up">
       {/* Result banner */}
@@ -114,11 +159,11 @@ export default function FeedbackOverlay({
                     className="text-sm text-gray-200"
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(choice.text) }}
                   />
-                  {explanations[choice.label] && (
+                  {perChoiceExplanations[choice.label] && (
                     <div
                       className="text-xs text-gray-400 italic [&_p]:mb-2 [&_p:last-child]:mb-0"
                       dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(explanations[choice.label]),
+                        __html: sanitizeHtml(perChoiceExplanations[choice.label]),
                       }}
                     />
                   )}
