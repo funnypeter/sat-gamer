@@ -177,6 +177,14 @@ export function transformQbankQuestion(
   if (index.ibn) {
     return { ok: false, reason: "image_based_ibn" };
   }
+  // CB embeds charts and graphs as inline SVGs wrapped in <figure>.
+  // The ibn flag is often null for these. Our pipeline can't render
+  // SVG — stripping the tags leaks aria-label axis data as garbled
+  // prose. Reject any question with embedded visual content.
+  const rawStimulus = detail.stimulus ?? "";
+  if (/<svg\b/i.test(rawStimulus) || /<figure\b/i.test(rawStimulus) || /<img\b/i.test(rawStimulus)) {
+    return { ok: false, reason: "embedded_visual" };
+  }
   if (!detail.answerOptions || detail.answerOptions.length !== 4) {
     return {
       ok: false,
