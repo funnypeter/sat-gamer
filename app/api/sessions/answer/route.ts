@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateNewElo } from "@/lib/engine/elo";
 import { DEFAULT_SETTINGS, EARNING_RATES, DSAT_CATEGORIES } from "@/lib/constants";
 import { getGeminiModel } from "@/lib/gemini/client";
+import { startOfWeekInAppTimezone } from "@/lib/date";
 
 function getMinutesPerQuestion(isCorrect: boolean, difficultyRating: number): number {
   if (isCorrect) {
@@ -130,9 +131,10 @@ Reply with ONLY the category name, nothing else.`;
     // Calculate per-question time earned
     const minutesForQuestion = getMinutesPerQuestion(isCorrect, question.difficulty_rating);
 
-    // Check weekly cap (rolling 7 days)
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - 7);
+    // Check weekly cap. Resets Monday at midnight Pacific — not a
+    // rolling 7-day window — so a student always has a predictable
+    // "fresh week" moment regardless of when they last maxed out.
+    const weekStart = startOfWeekInAppTimezone();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: weekBalances } = await admin

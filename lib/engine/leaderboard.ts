@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { effectiveStreak } from "@/lib/engine/streak";
+import { startOfWeekInAppTimezone } from "@/lib/date";
 
 /**
  * Shape consumed by `LeaderboardClient`. One entry per student in the family.
@@ -41,15 +42,14 @@ export async function buildLeaderboard(
       .from("student_questions")
       .select("student_id, is_correct")
       .in("student_id", studentIds),
-    (() => {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return admin
-        .from("student_questions")
-        .select("student_id, is_correct")
-        .in("student_id", studentIds)
-        .gte("answered_at", weekAgo.toISOString());
-    })(),
+    // "This week" = since Monday midnight Pacific, not a rolling 7 days.
+    // Without a calendar-week anchor, weekly and all-time look identical
+    // for any student who's been active less than 7 days.
+    admin
+      .from("student_questions")
+      .select("student_id, is_correct")
+      .in("student_id", studentIds)
+      .gte("answered_at", startOfWeekInAppTimezone().toISOString()),
   ]);
 
   return familyStudents.map((s) => {

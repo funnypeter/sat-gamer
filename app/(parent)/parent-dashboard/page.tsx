@@ -6,6 +6,7 @@ import RedemptionQueue from "@/components/parent/RedemptionQueue";
 import { effectiveStreak } from "@/lib/engine/streak";
 import { buildLeaderboard } from "@/lib/engine/leaderboard";
 import LeaderboardClient from "@/app/(student)/leaderboard/LeaderboardClient";
+import { startOfWeekInAppTimezone } from "@/lib/date";
 
 export default async function ParentDashboard() {
   const supabase = createClient();
@@ -52,10 +53,10 @@ export default async function ParentDashboard() {
     ? await admin.from("student_stats").select("*").in("student_id", studentIds)
     : { data: [] };
 
-  // Fetch student_questions for this week
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  weekStart.setHours(0, 0, 0, 0);
+  // Fetch student_questions for this week — anchor to Monday midnight PT
+  // (not server-local) so the "questions this week" count resets at the
+  // same moment as the leaderboard's Weekly view and the gaming-time cap.
+  const weekStart = startOfWeekInAppTimezone();
 
   const { data: weeklyQuestions } = studentIds.length > 0
     ? await admin
