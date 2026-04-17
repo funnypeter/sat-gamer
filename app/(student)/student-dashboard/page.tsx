@@ -70,6 +70,16 @@ export default async function StudentDashboard() {
     .eq("student_id", user.id)
     .order("elo_rating", { ascending: true });
 
+  const avgElo =
+    categoryStats && categoryStats.length > 0
+      ? Math.round(
+          categoryStats.reduce(
+            (sum: number, s: { elo_rating: number }) => sum + s.elo_rating,
+            0
+          ) / categoryStats.length
+        )
+      : 500;
+
   return (
     <div className="mx-auto max-w-md space-y-6 animate-fade-in">
       <div>
@@ -99,20 +109,40 @@ export default async function StudentDashboard() {
         </div>
       </div>
 
-      <div className="card-glass p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-yellow-500/10">
-            <svg className="h-6 w-6 text-accent-gold" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2c0 0-4 6-4 10a4 4 0 108 0c0-4-4-10-4-10z" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-lg font-bold text-white">{displayStreak} day streak</p>
-            <p className="text-xs text-gray-400">Best: {streak?.longest_streak ?? 0} days</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card-glass p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-yellow-500/10">
+              <svg className="h-5 w-5 text-accent-gold" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2c0 0-4 6-4 10a4 4 0 108 0c0-4-4-10-4-10z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold text-white leading-tight">
+                {displayStreak}
+                <span className="text-sm font-medium text-gray-400 ml-1">
+                  day{displayStreak === 1 ? "" : "s"}
+                </span>
+              </p>
+              <p className="text-[11px] text-gray-400 truncate">
+                {displayStreak >= 7 ? "On Fire" : "Keep Going"} · Best {streak?.longest_streak ?? 0}
+              </p>
+            </div>
           </div>
         </div>
-        <div className="badge-gold text-sm">
-          {displayStreak >= 7 ? "On Fire" : "Keep Going"}
+
+        <div className="card-glass p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-blue/10">
+              <svg className="h-5 w-5 text-accent-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold text-white leading-tight">{avgElo}</p>
+              <p className="text-[11px] text-gray-400 truncate">Avg Elo</p>
+            </div>
+          </div>
         </div>
       </div>
 

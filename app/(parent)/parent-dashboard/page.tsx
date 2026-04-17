@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import ChildOverviewCard from "@/components/parent/ChildOverviewCard";
 import RedemptionQueue from "@/components/parent/RedemptionQueue";
 import { effectiveStreak } from "@/lib/engine/streak";
+import { buildLeaderboard } from "@/lib/engine/leaderboard";
+import LeaderboardClient from "@/app/(student)/leaderboard/LeaderboardClient";
 
 export default async function ParentDashboard() {
   const supabase = createClient();
@@ -118,6 +120,14 @@ export default async function ParentDashboard() {
     };
   });
 
+  const leaderboardStudents = await buildLeaderboard(
+    admin,
+    (students ?? []).map((s: { id: string; display_name: string }) => ({
+      id: s.id,
+      display_name: s.display_name,
+    }))
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const requestsWithNames = (pendingRequests ?? []).map((r: any) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -157,6 +167,17 @@ export default async function ParentDashboard() {
         <h3 className="mb-4 text-lg font-semibold text-white">Pending Requests</h3>
         <RedemptionQueue requests={requestsWithNames} />
       </section>
+
+      {leaderboardStudents.length > 1 && (
+        <section>
+          {/* currentUserId is the parent's id, which won't match any student —
+              so the "YOU" highlight stays off for the parent view. */}
+          <LeaderboardClient
+            students={leaderboardStudents}
+            currentUserId={user.id}
+          />
+        </section>
+      )}
     </div>
   );
 }
