@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import CategoryBreakdown from "@/components/student/CategoryBreakdown";
+import { effectiveStreak } from "@/lib/engine/streak";
 
 export default async function StudentDashboard() {
   const supabase = createClient();
@@ -28,6 +29,10 @@ export default async function StudentDashboard() {
     .select("*")
     .eq("student_id", user.id)
     .single();
+  const displayStreak = effectiveStreak(
+    streak?.last_practice_date ?? null,
+    streak?.current_streak ?? 0
+  );
 
   const { data: balances } = await admin
     .from("time_balances")
@@ -102,12 +107,12 @@ export default async function StudentDashboard() {
             </svg>
           </div>
           <div>
-            <p className="text-lg font-bold text-white">{streak?.current_streak ?? 0} day streak</p>
+            <p className="text-lg font-bold text-white">{displayStreak} day streak</p>
             <p className="text-xs text-gray-400">Best: {streak?.longest_streak ?? 0} days</p>
           </div>
         </div>
         <div className="badge-gold text-sm">
-          {(streak?.current_streak ?? 0) >= 7 ? "On Fire" : "Keep Going"}
+          {displayStreak >= 7 ? "On Fire" : "Keep Going"}
         </div>
       </div>
 

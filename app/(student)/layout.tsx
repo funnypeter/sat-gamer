@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import { effectiveStreak } from "@/lib/engine/streak";
 
 export default async function StudentLayout({
   children,
@@ -32,9 +33,13 @@ export default async function StudentLayout({
 
   const { data: streak } = await admin
     .from("streaks")
-    .select("current_streak")
+    .select("current_streak, last_practice_date")
     .eq("student_id", user.id)
     .single();
+  const displayStreak = effectiveStreak(
+    streak?.last_practice_date ?? null,
+    streak?.current_streak ?? 0
+  );
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -47,7 +52,7 @@ export default async function StudentLayout({
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2c0 0-4 6-4 10a4 4 0 108 0c0-4-4-10-4-10z" />
             </svg>
-            <span className="font-semibold">{streak?.current_streak ?? 0}</span>
+            <span className="font-semibold">{displayStreak}</span>
           </div>
           <Link href="/profile" className="flex h-8 w-8 rounded-full overflow-hidden bg-accent-blue/20 items-center justify-center">
             {profile.avatar_url ? (

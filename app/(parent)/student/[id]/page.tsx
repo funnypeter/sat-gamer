@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { DSAT_CATEGORIES } from "@/lib/constants";
 import Link from "next/link";
 import ResetStudentButton from "@/components/parent/ResetStudentButton";
+import { effectiveStreak } from "@/lib/engine/streak";
 
 interface WeekData {
   weekLabel: string;
@@ -182,7 +183,7 @@ export default async function StudentDetailPage({
               <svg className="h-5 w-5 text-accent-gold" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2c0 0-4 6-4 10a4 4 0 108 0c0-4-4-10-4-10z" />
               </svg>
-              <p className="text-2xl font-bold text-accent-gold">{streak?.current_streak ?? 0}</p>
+              <p className="text-2xl font-bold text-accent-gold">{effectiveStreak(streak?.last_practice_date ?? null, streak?.current_streak ?? 0)}</p>
             </div>
             <p className="text-xs text-gray-500 uppercase tracking-wider">Streak</p>
           </div>

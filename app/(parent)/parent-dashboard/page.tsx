@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import ChildOverviewCard from "@/components/parent/ChildOverviewCard";
 import RedemptionQueue from "@/components/parent/RedemptionQueue";
+import { effectiveStreak } from "@/lib/engine/streak";
 
 export default async function ParentDashboard() {
   const supabase = createClient();
@@ -105,7 +106,10 @@ export default async function ParentDashboard() {
     return {
       id: student.id,
       displayName: student.display_name,
-      currentStreak: streak?.current_streak ?? 0,
+      currentStreak: effectiveStreak(
+        streak?.last_practice_date ?? null,
+        streak?.current_streak ?? 0
+      ),
       longestStreak: streak?.longest_streak ?? 0,
       availableMinutes: totalMin,
       overallAccuracy,

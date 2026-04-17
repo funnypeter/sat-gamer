@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import LeaderboardClient from "./LeaderboardClient";
+import { effectiveStreak } from "@/lib/engine/streak";
 
 export default async function LeaderboardPage() {
   const supabase = createClient();
@@ -70,7 +71,10 @@ export default async function LeaderboardPage() {
     return {
       id: s.id,
       displayName: s.display_name,
-      currentStreak: streak?.current_streak ?? 0,
+      currentStreak: effectiveStreak(
+        streak?.last_practice_date ?? null,
+        streak?.current_streak ?? 0
+      ),
       longestStreak: streak?.longest_streak ?? 0,
       avgElo,
       allTime: { total: allTotal, correct: allCorrect, accuracy: allAccuracy },
