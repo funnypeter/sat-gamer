@@ -1,5 +1,7 @@
 "use client";
 
+import { formatMinutes } from "@/lib/constants";
+
 interface TimeEntry {
   minutes_remaining: number;
   expires_at: string;
@@ -30,7 +32,7 @@ export default function GamingTimeBalance({
           Gaming Time
         </h3>
         <span className="text-3xl font-bold text-accent-blue">
-          {total}
+          {formatMinutes(total)}
           <span className="text-base text-gray-400 ml-1">min</span>
         </span>
       </div>
@@ -50,7 +52,7 @@ export default function GamingTimeBalance({
                 className="flex items-center justify-between text-sm"
               >
                 <span className="text-white">
-                  {Number(entry.minutes_remaining)} min
+                  {formatMinutes(Number(entry.minutes_remaining))} min
                 </span>
                 <span
                   className={`text-xs ${

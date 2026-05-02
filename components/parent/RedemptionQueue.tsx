@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatMinutes } from "@/lib/constants";
 
 interface RedemptionRequest {
   id: string;
@@ -68,7 +69,7 @@ export default function RedemptionQueue({ requests }: RedemptionQueueProps) {
                     {request.studentName}
                   </span>
                   <span className="badge-blue">
-                    {request.requestedMinutes} min
+                    {formatMinutes(request.requestedMinutes)} min
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-gray-400">

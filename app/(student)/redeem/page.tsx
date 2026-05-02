@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { formatMinutes } from "@/lib/constants";
 
 export default function RedeemPage() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function RedeemPage() {
     fetch("/api/redeem/balance")
       .then((r) => r.json())
       .then((data) => {
-        const avail = Math.floor(data.availableMinutes ?? 0);
+        const avail = Math.round(Number(data.availableMinutes ?? 0) * 100) / 100;
         setAvailableMinutes(avail);
         setSelectedMinutes(Math.min(15, avail));
         setLoading(false);
@@ -59,7 +60,7 @@ export default function RedeemPage() {
         </div>
         <h2 className="text-2xl font-bold text-white">Request Sent!</h2>
         <p className="text-gray-400">
-          Your request for {selectedMinutes} minutes has been sent for approval.
+          Your request for {formatMinutes(selectedMinutes)} minutes has been sent for approval.
         </p>
         <button onClick={() => router.push("/student-dashboard")} className="btn-primary px-8">
           Back to Home
@@ -127,7 +128,7 @@ export default function RedeemPage() {
               </svg>
               {/* Center text */}
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-5xl font-bold text-white">{selectedMinutes}</span>
+                <span className="text-5xl font-bold text-white">{formatMinutes(selectedMinutes)}</span>
                 <span className="text-sm text-gray-400">minutes</span>
               </div>
             </div>
@@ -135,17 +136,17 @@ export default function RedeemPage() {
             {/* Slider input (hidden visual, controls the value) */}
             <input
               type="range"
-              min={1}
+              min={0.25}
               max={availableMinutes}
-              step={1}
+              step={0.25}
               value={selectedMinutes}
-              onChange={(e) => setSelectedMinutes(parseInt(e.target.value))}
+              onChange={(e) => setSelectedMinutes(parseFloat(e.target.value))}
               className="w-48 mt-2 accent-blue-500"
               style={{ accentColor: "#3b82f6" }}
             />
             <div className="flex justify-between w-48 text-xs text-gray-500 mt-1">
-              <span>1 min</span>
-              <span>{availableMinutes} min</span>
+              <span>0.25 min</span>
+              <span>{formatMinutes(availableMinutes)} min</span>
             </div>
           </div>
 
@@ -160,7 +161,7 @@ export default function RedeemPage() {
             disabled={submitting || selectedMinutes <= 0}
             className="btn-primary w-full text-lg"
           >
-            {submitting ? "Submitting..." : `Request ${selectedMinutes} Minutes`}
+            {submitting ? "Submitting..." : `Request ${formatMinutes(selectedMinutes)} Minutes`}
           </button>
         </div>
       ) : (

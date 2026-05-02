@@ -36,3 +36,12 @@ export const DIFFICULTY_BANDS = {
 } as const;
 
 export type DifficultyBand = keyof typeof DIFFICULTY_BANDS;
+
+// Minutes are stored as numeric(5,2) and earned in 0.25 increments. Round to
+// 2 decimals to suppress floating-point noise, then strip trailing zeros so
+// integer values render as "15" instead of "15.00".
+export function formatMinutes(n: number): string {
+  const rounded = Math.round(Number(n) * 100) / 100;
+  if (Number.isInteger(rounded)) return String(rounded);
+  return rounded.toFixed(2).replace(/\.?0+$/, "");
+}

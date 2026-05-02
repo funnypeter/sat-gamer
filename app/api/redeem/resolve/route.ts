@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatMinutes } from "@/lib/constants";
 
 export async function POST(request: Request) {
   try {
@@ -104,11 +105,13 @@ export async function POST(request: Request) {
               .eq("id", balance.id);
             remainingToRedeem -= available;
           } else {
-            // Partial use
+            // Partial use — round to 2 decimals to match numeric(5,2) and avoid
+            // floating-point noise (e.g. 1.75 - 0.5 = 1.2499999999999998).
+            const newRemaining = Math.round((available - remainingToRedeem) * 100) / 100;
             await admin
               .from("time_balances")
               .update({
-                minutes_remaining: available - remainingToRedeem,
+                minutes_remaining: newRemaining,
               })
               .eq("id", balance.id);
             remainingToRedeem = 0;
@@ -127,8 +130,8 @@ export async function POST(request: Request) {
           : "Request Denied",
       message:
         action === "approved"
-          ? `Your request for ${redemptionRequest.requested_minutes} minutes has been approved. Enjoy your gaming time!`
-          : `Your request for ${redemptionRequest.requested_minutes} minutes was denied.`,
+          ? `Your request for ${formatMinutes(Number(redemptionRequest.requested_minutes))} minutes has been approved. Enjoy your gaming time!`
+          : `Your request for ${formatMinutes(Number(redemptionRequest.requested_minutes))} minutes was denied.`,
       data: { requestId, action },
     });
 

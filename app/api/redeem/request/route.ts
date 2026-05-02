@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatMinutes } from "@/lib/constants";
 
 export async function POST(request: Request) {
   try {
@@ -16,10 +17,12 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
 
     const body = await request.json();
-    const requestedMinutes = body.requestedMinutes ?? body.minutes;
+    const rawMinutes = Number(body.requestedMinutes ?? body.minutes);
+    // Round to 2 decimals to match the DB's numeric(5,2) column.
+    const requestedMinutes = Math.round(rawMinutes * 100) / 100;
     const activityDescription = body.activityDescription ?? body.activity ?? "";
 
-    if (!requestedMinutes || requestedMinutes <= 0) {
+    if (!Number.isFinite(requestedMinutes) || requestedMinutes <= 0) {
       return NextResponse.json(
         { error: "Invalid minutes requested" },
         { status: 400 }
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
     if (requestedMinutes > totalAvailable) {
       return NextResponse.json(
         {
-          error: `Insufficient balance. You have ${totalAvailable} minutes available.`,
+          error: `Insufficient balance. You have ${formatMinutes(totalAvailable)} minutes available.`,
         },
         { status: 400 }
       );
@@ -85,7 +88,7 @@ export async function POST(request: Request) {
           user_id: parent.id,
           type: "redemption_request",
           title: "New Redemption Request",
-          message: `${profile.display_name} wants to redeem ${requestedMinutes} minutes for: ${activityDescription || "Gaming time"}`,
+          message: `${profile.display_name} wants to redeem ${formatMinutes(requestedMinutes)} minutes for: ${activityDescription || "Gaming time"}`,
           data: { requestId: redemptionRequest.id },
         }));
 

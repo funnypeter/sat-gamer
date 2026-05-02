@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatMinutes } from "@/lib/constants";
 
 interface WeakCategory {
   category: string;
@@ -52,7 +53,7 @@ export default function ChildOverviewCard({ child }: ChildOverviewCardProps) {
         {/* Gaming time */}
         <div className="text-center">
           <p className="text-lg font-bold text-accent-blue">
-            {child.availableMinutes}
+            {formatMinutes(child.availableMinutes)}
           </p>
           <p className="text-[10px] text-gray-500 uppercase tracking-wider">
             Minutes

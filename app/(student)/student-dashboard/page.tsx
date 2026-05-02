@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import CategoryBreakdown from "@/components/student/CategoryBreakdown";
 import { effectiveStreak } from "@/lib/engine/streak";
+import { formatMinutes } from "@/lib/constants";
 
 export default async function StudentDashboard() {
   const supabase = createClient();
@@ -92,7 +93,7 @@ export default async function StudentDashboard() {
       <div className="card-glow p-6 text-center">
         <p className="text-sm font-medium text-gray-400 uppercase tracking-wider">Gaming Time Available</p>
         <p className="mt-2 text-5xl font-bold text-accent-blue">
-          {totalMinutes}<span className="text-2xl text-gray-400 ml-1">min</span>
+          {formatMinutes(totalMinutes)}<span className="text-2xl text-gray-400 ml-1">min</span>
         </p>
         {balances && balances.length > 0 && (
           <p className="mt-1 text-xs text-gray-500">
@@ -158,7 +159,7 @@ export default async function StudentDashboard() {
             <span className="stat-label">Accuracy</span>
           </div>
           <div className="stat-card text-center">
-            <span className="stat-value text-accent-blue">{todayMinutes}</span>
+            <span className="stat-value text-accent-blue">{formatMinutes(todayMinutes)}</span>
             <span className="stat-label">Min Earned</span>
           </div>
         </div>
