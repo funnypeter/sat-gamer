@@ -6,7 +6,7 @@ import { GeneratedQuestionsArraySchema } from "@/lib/gemini/schema";
 import { buildQuestionGenerationPrompt } from "@/lib/gemini/prompts";
 import { DSAT_CATEGORIES } from "@/lib/constants";
 import type { DsatCategory } from "@/lib/constants";
-import { selectNextQuestion } from "@/lib/engine/question-selector";
+import { selectNextQuestion, pickLaggardCategory } from "@/lib/engine/question-selector";
 import type { Question } from "@/lib/types/database";
 
 export async function GET(request: Request) {
@@ -33,15 +33,17 @@ export async function GET(request: Request) {
     // weak category at the right difficulty band.
     const { data: stats } = await admin
       .from("student_stats")
-      .select("category, elo_rating")
+      .select("category, elo_rating, total_attempted")
       .eq("student_id", user.id)
       .order("elo_rating", { ascending: true });
 
     let targetCategory: DsatCategory;
-    if (stats && stats.length > 0 && Math.random() < 0.7) {
-      const weakest = stats.slice(0, 3);
-      targetCategory = weakest[Math.floor(Math.random() * weakest.length)]
-        .category as DsatCategory;
+    const laggard =
+      stats && stats.length > 0 && Math.random() < 0.7
+        ? pickLaggardCategory(stats)
+        : null;
+    if (laggard) {
+      targetCategory = laggard as DsatCategory;
     } else {
       targetCategory =
         DSAT_CATEGORIES[Math.floor(Math.random() * DSAT_CATEGORIES.length)];
