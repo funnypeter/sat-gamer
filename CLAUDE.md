@@ -86,12 +86,12 @@ Per-question gaming-time reward by `difficulty_rating` bucket (constants in `lib
 
 Capped at 45 minutes per rolling 7-day window (`DEFAULT_SETTINGS.weeklyCapMinutes`).
 
-### Spaced repetition — `app/api/sessions/answer/route.ts:183-226`
+### Spaced repetition — `app/api/sessions/answer/route.ts:185-218`
 
-Standard SM-2:
+Single-pass review (not full SM-2):
 - **Wrong answer** → row scheduled for **tomorrow**, `interval_days = 1`, ease starts at 2.5 or decreases by 0.2 (floor 1.3).
-- **Correct answer on a review** → `newInterval = round(interval * (ease + 0.1))`, ease grows up to 3.0.
-- **Correct on first try** → no SR row created (the question won't be reviewed).
+- **Correct answer on a review** → SR row **deleted**. The question is retired from rotation; once proved learned, it isn't cycled again. The original miss still lives in `student_questions`, so the Review page's history is intact.
+- **Correct on first try** → no SR row created.
 - No same-session or same-day retry — `next_review_date` is a date, set to "tomorrow" earliest.
 
 ### Rendering

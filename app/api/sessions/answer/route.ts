@@ -208,23 +208,15 @@ Reply with ONLY the category name, nothing else.`;
         });
       }
     } else {
-      const { data: existingSR } = await admin
+      // Correct on a review answer — retire the question from SR rotation.
+      // The student already proved they know it once after the original miss,
+      // so we don't keep cycling it via expanding intervals. The miss still
+      // lives in student_questions, so the Review page's history is intact.
+      await admin
         .from("spaced_repetition")
-        .select("*")
+        .delete()
         .eq("student_id", user.id)
-        .eq("question_id", questionId)
-        .single();
-
-      if (existingSR) {
-        const newEase = Math.min(3.0, Number(existingSR.ease_factor) + 0.1);
-        const newInterval = Math.round(existingSR.interval_days * newEase);
-        await admin.from("spaced_repetition").update({
-          next_review_date: new Date(Date.now() + newInterval * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-          interval_days: newInterval,
-          ease_factor: newEase,
-          review_count: existingSR.review_count + 1,
-        }).eq("id", existingSR.id);
-      }
+        .eq("question_id", questionId);
     }
 
     return NextResponse.json({
