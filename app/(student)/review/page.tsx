@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 export default async function ReviewPage() {
   const supabase = createClient();
@@ -47,12 +48,14 @@ export default async function ReviewPage() {
                     {new Date(m.answered_at).toLocaleDateString()}
                   </span>
                 </div>
-                <p className="text-sm text-gray-400 line-clamp-3">
-                  {q?.passage_text ?? ""}
-                </p>
-                <p className="text-sm font-medium text-white">
-                  {q?.question_text ?? ""}
-                </p>
+                <div
+                  className="text-sm text-gray-400 line-clamp-3 [&_p]:inline"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(q?.passage_text ?? "") }}
+                />
+                <div
+                  className="text-sm font-medium text-white"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(q?.question_text ?? "") }}
+                />
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
                     <span className="text-gray-400">Your answer: </span>
@@ -66,7 +69,12 @@ export default async function ReviewPage() {
                 {q?.explanations && (
                   <div className="text-xs text-gray-400 bg-white/5 rounded-lg p-3">
                     <p className="font-semibold text-accent-green mb-1">Why {q.correct_answer} is correct:</p>
-                    <p>{q.explanations[q.correct_answer]}</p>
+                    <div
+                      className="[&_p]:mb-2 [&_p:last-child]:mb-0"
+                      dangerouslySetInnerHTML={{
+                        __html: sanitizeHtml(q.explanations[q.correct_answer] ?? ""),
+                      }}
+                    />
                   </div>
                 )}
               </div>
