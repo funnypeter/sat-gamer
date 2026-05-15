@@ -29,6 +29,10 @@ export default function PracticePage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  // For SR-review questions the server shuffles choices and re-labels
+  // them; choiceMap[displayedLabel] = originalLabel. Null for fresh
+  // questions where the displayed labels match the stored labels 1:1.
+  const [choiceMap, setChoiceMap] = useState<Record<string, string> | null>(null);
   const [lastEarned, setLastEarned] = useState<number | null>(null);
   const [earnedThisWeek, setEarnedThisWeek] = useState(0);
   const [sessionEarned, setSessionEarned] = useState(0);
@@ -44,6 +48,7 @@ export default function PracticePage() {
       const data = await res.json();
       if (data.question) {
         setCurrentQuestion(data.question);
+        setChoiceMap(data.choiceMap ?? null);
         setSelectedAnswer(null);
         setLastEarned(null);
         answerStartTime.current = Date.now();
@@ -88,6 +93,9 @@ export default function PracticePage() {
     setSubmitting(true);
 
     const timeSpent = Math.round((Date.now() - answerStartTime.current) / 1000);
+    // Translate displayed label back to the question's original label
+    // so the server can compare against the stored correct_answer.
+    const answerToSubmit = choiceMap?.[answer] ?? answer;
 
     try {
       const res = await fetch("/api/sessions/answer", {
@@ -96,14 +104,32 @@ export default function PracticePage() {
         body: JSON.stringify({
           sessionId,
           questionId: currentQuestion.id,
-          answerGiven: answer,
+          answerGiven: answerToSubmit,
           timeSpentSeconds: timeSpent,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Failed to submit answer"); return; }
-      recordAnswer(data.isCorrect, data.correctAnswer, data.explanations);
+
+      // Translate the original-label correctAnswer/explanations back
+      // into displayed-label space so FeedbackOverlay highlights and
+      // captions match what the student actually saw.
+      let displayedCorrect: string = data.correctAnswer;
+      let displayedExplanations: Record<string, string> = data.explanations ?? {};
+      if (choiceMap) {
+        const reverseMap: Record<string, string> = {};
+        for (const [displayed, original] of Object.entries(choiceMap)) {
+          reverseMap[original] = displayed;
+        }
+        displayedCorrect = reverseMap[data.correctAnswer] ?? data.correctAnswer;
+        const remapped: Record<string, string> = {};
+        for (const [original, expl] of Object.entries(displayedExplanations)) {
+          remapped[reverseMap[original] ?? original] = expl;
+        }
+        displayedExplanations = remapped;
+      }
+      recordAnswer(data.isCorrect, displayedCorrect, displayedExplanations);
 
       // Prefetch more questions in background after first answer
       if (totalQuestions === 0) {

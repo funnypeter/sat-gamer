@@ -7,6 +7,7 @@ import { buildQuestionGenerationPrompt } from "@/lib/gemini/prompts";
 import { DSAT_CATEGORIES } from "@/lib/constants";
 import type { DsatCategory } from "@/lib/constants";
 import { selectNextQuestion, pickLaggardCategory } from "@/lib/engine/question-selector";
+import { shuffleChoices } from "@/lib/engine/shuffle-choices";
 import type { Question } from "@/lib/types/database";
 
 export async function GET(request: Request) {
@@ -26,6 +27,25 @@ export async function GET(request: Request) {
     // It returns null only when every question in the DB has been seen.
     const selected = await selectNextQuestion(admin, user.id, sessionId);
     if (selected) {
+      // If this question has an SR row for the student, they got it
+      // wrong before — shuffle the choices so they re-think the answer
+      // instead of remembering the original A/B/C/D position.
+      const { data: srRow } = await admin
+        .from("spaced_repetition")
+        .select("id")
+        .eq("student_id", user.id)
+        .eq("question_id", selected.id)
+        .maybeSingle();
+      if (srRow) {
+        const { choices, choiceMap } = shuffleChoices(
+          selected.choices,
+          selected.correct_answer,
+        );
+        return NextResponse.json({
+          question: stripAnswer({ ...selected, choices }),
+          choiceMap,
+        });
+      }
       return NextResponse.json({ question: stripAnswer(selected) });
     }
 
