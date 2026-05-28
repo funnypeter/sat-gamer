@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import QuestionCard from "@/components/student/QuestionCard";
 import FeedbackOverlay from "@/components/student/FeedbackOverlay";
+import { remapExplanationsToDisplayed } from "@/lib/cb-rationale";
 
 export default function PracticePage() {
   const {
@@ -114,7 +115,9 @@ export default function PracticePage() {
 
       // Translate the original-label correctAnswer/explanations back
       // into displayed-label space so FeedbackOverlay highlights and
-      // captions match what the student actually saw.
+      // captions match what the student actually saw. CB rationales are a
+      // single blob whose per-choice letters live inside the prose, so we
+      // must split before remapping — see remapExplanationsToDisplayed.
       let displayedCorrect: string = data.correctAnswer;
       let displayedExplanations: Record<string, string> = data.explanations ?? {};
       if (choiceMap) {
@@ -123,11 +126,10 @@ export default function PracticePage() {
           reverseMap[original] = displayed;
         }
         displayedCorrect = reverseMap[data.correctAnswer] ?? data.correctAnswer;
-        const remapped: Record<string, string> = {};
-        for (const [original, expl] of Object.entries(displayedExplanations)) {
-          remapped[reverseMap[original] ?? original] = expl;
-        }
-        displayedExplanations = remapped;
+        displayedExplanations = remapExplanationsToDisplayed(
+          data.explanations ?? {},
+          choiceMap,
+        );
       }
       recordAnswer(data.isCorrect, displayedCorrect, displayedExplanations);
 
