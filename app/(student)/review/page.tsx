@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sanitizeHtml } from "@/lib/sanitize";
+import ReviewCard from "@/components/student/ReviewCard";
 
 export default async function ReviewPage() {
   const supabase = createClient();
@@ -39,45 +39,17 @@ export default async function ReviewPage() {
           {mistakes.map((m: any) => {
             const q = m.questions;
             return (
-              <div key={m.id} className="card-glass p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-accent-blue">
-                    {q?.category ?? "Unknown"}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {new Date(m.answered_at).toLocaleDateString()}
-                  </span>
-                </div>
-                <div
-                  className="text-sm text-gray-400 line-clamp-3 [&_p]:inline"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(q?.passage_text ?? "") }}
-                />
-                <div
-                  className="text-sm font-medium text-white"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(q?.question_text ?? "") }}
-                />
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                    <span className="text-gray-400">Your answer: </span>
-                    <span className="text-accent-red font-semibold">{m.answer_given}</span>
-                  </div>
-                  <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-3 py-2">
-                    <span className="text-gray-400">Correct: </span>
-                    <span className="text-accent-green font-semibold">{q?.correct_answer ?? ""}</span>
-                  </div>
-                </div>
-                {q?.explanations && (
-                  <div className="text-xs text-gray-400 bg-white/5 rounded-lg p-3">
-                    <p className="font-semibold text-accent-green mb-1">Why {q.correct_answer} is correct:</p>
-                    <div
-                      className="[&_p]:mb-2 [&_p:last-child]:mb-0"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(q.explanations[q.correct_answer] ?? ""),
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+              <ReviewCard
+                key={m.id}
+                category={q?.category ?? "Unknown"}
+                answeredAt={m.answered_at}
+                passageText={q?.passage_text ?? ""}
+                questionText={q?.question_text ?? ""}
+                choices={q?.choices ?? []}
+                correctAnswer={q?.correct_answer ?? ""}
+                answerGiven={m.answer_given}
+                explanations={q?.explanations ?? null}
+              />
             );
           })}
         </div>
