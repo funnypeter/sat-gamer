@@ -36,13 +36,24 @@ export default function ReviewCard({
 
   return (
     <div className="card-glass p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-accent-blue">
           {category}
         </span>
-        <span className="text-xs text-gray-500">
-          {new Date(answeredAt).toLocaleDateString()}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">
+            {new Date(answeredAt).toLocaleDateString()}
+          </span>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse question" : "Expand question"}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg leading-none text-accent-blue transition-colors hover:bg-white/10"
+          >
+            {expanded ? "−" : "+"}
+          </button>
+        </div>
       </div>
 
       <div
@@ -50,17 +61,9 @@ export default function ReviewCard({
         dangerouslySetInnerHTML={{ __html: sanitizeHtml(passageText) }}
       />
       <div
-        className="text-sm font-medium text-white"
+        className={`text-sm font-medium text-white ${expanded ? "" : "line-clamp-2"}`}
         dangerouslySetInnerHTML={{ __html: sanitizeHtml(questionText) }}
       />
-
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="text-xs font-semibold text-accent-blue hover:underline"
-      >
-        {expanded ? "Show less" : "Show full question"}
-      </button>
 
       <div className="space-y-2 text-xs">
         <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
