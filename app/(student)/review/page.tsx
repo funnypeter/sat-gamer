@@ -41,6 +41,7 @@ export default async function ReviewPage() {
             return (
               <ReviewCard
                 key={m.id}
+                questionId={q?.id ?? m.question_id}
                 category={q?.category ?? "Unknown"}
                 answeredAt={m.answered_at}
                 passageText={q?.passage_text ?? ""}

@@ -3,8 +3,10 @@
 import { useState } from "react";
 import type { QuestionChoice } from "@/lib/types/database";
 import { sanitizeHtml } from "@/lib/sanitize";
+import AskGeminiChat from "./AskGeminiChat";
 
 interface ReviewCardProps {
+  questionId: string;
   category: string;
   answeredAt: string;
   passageText: string;
@@ -20,6 +22,7 @@ function choiceText(choices: QuestionChoice[], label: string): string {
 }
 
 export default function ReviewCard({
+  questionId,
   category,
   answeredAt,
   passageText,
@@ -30,6 +33,7 @@ export default function ReviewCard({
   explanations,
 }: ReviewCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const givenText = choiceText(choices, answerGiven);
   const correctText = choiceText(choices, correctAnswer);
@@ -100,6 +104,21 @@ export default function ReviewCard({
             }}
           />
         </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setChatOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-2 text-sm font-semibold text-accent-blue transition-colors hover:bg-accent-blue/20"
+      >
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1z" />
+        </svg>
+        Ask Gemini for help
+      </button>
+
+      {chatOpen && (
+        <AskGeminiChat questionId={questionId} onClose={() => setChatOpen(false)} />
       )}
     </div>
   );
