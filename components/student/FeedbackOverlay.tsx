@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import type { QuestionChoice } from "@/lib/types/database";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { splitCbRationale } from "@/lib/cb-rationale";
+import AskGeminiChat from "./AskGeminiChat";
 
 interface FeedbackOverlayProps {
+  questionId: string;
   isCorrect: boolean;
   correctAnswer: string;
   selectedAnswer: string;
@@ -14,6 +17,7 @@ interface FeedbackOverlayProps {
 }
 
 export default function FeedbackOverlay({
+  questionId,
   isCorrect,
   correctAnswer,
   selectedAnswer,
@@ -21,7 +25,22 @@ export default function FeedbackOverlay({
   choices,
   onNext,
 }: FeedbackOverlayProps) {
+  const [chatOpen, setChatOpen] = useState(false);
   const perChoiceExplanations = splitCbRationale(explanations);
+
+  // Tailor the chat quick-prompts to whether they got it right — asking
+  // "why is my answer wrong?" makes no sense on a correct answer.
+  const chatSuggestions = isCorrect
+    ? [
+        "Why is the correct answer right?",
+        "What is this question really testing?",
+        "How could I have solved this faster?",
+      ]
+    : [
+        "Can you explain this more simply?",
+        "Why is my answer wrong?",
+        "What is this question really testing?",
+      ];
   return (
     <div className="space-y-4 animate-slide-up">
       {/* Result banner */}
@@ -131,10 +150,30 @@ export default function FeedbackOverlay({
         })}
       </div>
 
+      {/* Ask Gemini — available whether the answer was right or wrong */}
+      <button
+        type="button"
+        onClick={() => setChatOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-2 text-sm font-semibold text-accent-blue transition-colors hover:bg-accent-blue/20"
+      >
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1z" />
+        </svg>
+        Ask Gemini for help
+      </button>
+
       {/* Next button */}
       <button onClick={onNext} className="btn-primary w-full">
         Next Question
       </button>
+
+      {chatOpen && (
+        <AskGeminiChat
+          questionId={questionId}
+          suggestions={chatSuggestions}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </div>
   );
 }

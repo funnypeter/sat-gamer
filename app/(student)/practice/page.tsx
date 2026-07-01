@@ -274,6 +274,7 @@ export default function PracticePage() {
       {/* Feedback */}
       {showFeedback && (
         <FeedbackOverlay
+          questionId={currentQuestion?.id ?? ""}
           isCorrect={lastAnswerCorrect ?? false}
           correctAnswer={lastCorrectAnswer ?? ""}
           selectedAnswer={selectedAnswer ?? ""}
