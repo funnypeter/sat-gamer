@@ -54,7 +54,12 @@ export function pickLaggardCategory(stats: LaggardStat[]): string | null {
  * 7. Any unseen question at all (any difficulty, any source)
  * 8. Returns null so the caller can trigger Gemini generation
  *
- * Never returns a question already answered in the current session.
+ * Only never-answered questions are served. Questions the student has
+ * already answered (right or wrong) come back solely via spaced
+ * repetition (step 1) — or via the explicit { allowRepeats: true }
+ * option, which the /api/questions/next route uses only after Gemini
+ * generation has failed, as a better-than-nothing fallback. Repeats
+ * within the current session are never served.
  *
  * The CB-first preference at steps 2-4 means a student is always
  * served authentic College Board content when an Elo-appropriate one
@@ -67,7 +72,8 @@ export function pickLaggardCategory(stats: LaggardStat[]): string | null {
 export async function selectNextQuestion(
   supabase: SupabaseClient,
   studentId: string,
-  currentSessionId?: string
+  currentSessionId?: string,
+  opts?: { allowRepeats?: boolean }
 ): Promise<Question | null> {
   // Get ALL question IDs this student has ever answered
   const { data: answered } = await supabase
@@ -195,7 +201,22 @@ export async function selectNextQuestion(
     if (q) return q;
   }
 
-  // All questions exhausted — return null so caller triggers generation
+  // Every question has been seen. Normally return null so the caller
+  // triggers Gemini generation; only when the caller explicitly opts in
+  // (generation already failed) do we re-serve an old question.
+  if (opts?.allowRepeats) {
+    for (const filters of tiers) {
+      const q = await findUnseen(
+        supabase,
+        answeredIds,
+        sessionAnsweredIds,
+        filters,
+        true
+      );
+      if (q) return q;
+    }
+  }
+
   return null;
 }
 
@@ -209,9 +230,19 @@ async function findUnseen(
     eloMax?: number;
     /** When true, restrict to authentic College Board questions. */
     cbOnly?: boolean;
-  }
+  },
+  /**
+   * When true, serve already-answered questions (still never repeats
+   * within the current session). Off by default: silently re-serving
+   * answered questions here would mask unseen questions in later tiers
+   * and starve the Gemini-generation fallback.
+   */
+  allowAnswered = false
 ): Promise<Question | null> {
-  let query = supabase.from("questions").select("*").limit(100);
+  // Fetch ids only so the candidate window can be wide without
+  // shipping hundreds of passages over the wire; the winner's full row
+  // is fetched afterwards.
+  let query = supabase.from("questions").select("id").limit(1000);
 
   if (filters.categories && filters.categories.length > 0) {
     query = query.in("category", filters.categories);
@@ -233,16 +264,16 @@ async function findUnseen(
   const { data: candidates } = await query;
   if (!candidates || candidates.length === 0) return null;
 
-  // Prefer never-answered, then not-answered-this-session
-  const neverSeen = candidates.filter((q: { id: string }) => !answeredIds.has(q.id));
-  if (neverSeen.length > 0) {
-    return neverSeen[Math.floor(Math.random() * neverSeen.length)] as Question;
-  }
+  const pool = candidates.filter((q: { id: string }) =>
+    allowAnswered ? !sessionAnsweredIds.has(q.id) : !answeredIds.has(q.id)
+  );
+  if (pool.length === 0) return null;
 
-  const notThisSession = candidates.filter((q: { id: string }) => !sessionAnsweredIds.has(q.id));
-  if (notThisSession.length > 0) {
-    return notThisSession[Math.floor(Math.random() * notThisSession.length)] as Question;
-  }
-
-  return null;
+  const picked = pool[Math.floor(Math.random() * pool.length)];
+  const { data: question } = await supabase
+    .from("questions")
+    .select("*")
+    .eq("id", picked.id)
+    .single();
+  return (question as Question) ?? null;
 }

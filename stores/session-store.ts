@@ -8,6 +8,13 @@ interface SessionState {
   totalQuestions: number;
   correctCount: number;
   currentQuestion: Question | null;
+  // displayed label -> original label for questions served with
+  // shuffled choices (SR reviews / repeat fallbacks). Lives here, not
+  // in page state: the store outlives the practice page, so a map kept
+  // in useState would reset to null on remount while the shuffled
+  // question survived — answers would then be graded against the wrong
+  // letters. Null for fresh questions (labels match storage 1:1).
+  currentChoiceMap: Record<string, string> | null;
   timeEarnedToday: number; // total minutes earned today
   showFeedback: boolean;
   lastAnswerCorrect: boolean | null;
@@ -17,7 +24,10 @@ interface SessionState {
   // Actions
   startSession: (sessionId: string) => void;
   endSession: () => void;
-  setCurrentQuestion: (question: Question | null) => void;
+  setCurrentQuestion: (
+    question: Question | null,
+    choiceMap?: Record<string, string> | null
+  ) => void;
   recordAnswer: (
     correct: boolean,
     correctAnswer: string,
@@ -37,6 +47,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   totalQuestions: 0,
   correctCount: 0,
   currentQuestion: null,
+  currentChoiceMap: null,
   timeEarnedToday: 0,
   showFeedback: false,
   lastAnswerCorrect: null,
@@ -51,6 +62,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       totalQuestions: 0,
       correctCount: 0,
       currentQuestion: null,
+      currentChoiceMap: null,
       showFeedback: false,
     }),
 
@@ -59,11 +71,12 @@ export const useSessionStore = create<SessionState>((set) => ({
       sessionId: null,
       isActive: false,
       currentQuestion: null,
+      currentChoiceMap: null,
       showFeedback: false,
     }),
 
-  setCurrentQuestion: (question) =>
-    set({ currentQuestion: question }),
+  setCurrentQuestion: (question, choiceMap) =>
+    set({ currentQuestion: question, currentChoiceMap: choiceMap ?? null }),
 
   recordAnswer: (correct, correctAnswer, explanations) =>
     set((state) => ({

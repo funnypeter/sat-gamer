@@ -76,14 +76,31 @@ export async function GET(request: Request) {
     const band = elo < 450 ? "easy" : elo < 600 ? "medium" : "hard";
 
     const generated = await generateAndServe(admin, targetCategory, band);
-    if (!generated) {
+    if (generated) {
+      return NextResponse.json({ question: stripAnswer(generated) });
+    }
+
+    // Generation failed — rather than erroring out, re-serve an
+    // already-answered question (never one from this session). Shuffle
+    // the choices so it's still real practice instead of label recall.
+    const repeat = await selectNextQuestion(admin, user.id, sessionId, {
+      allowRepeats: true,
+    });
+    if (repeat) {
+      const { choices, choiceMap } = shuffleChoices(
+        repeat.choices,
+        repeat.correct_answer,
+      );
       return NextResponse.json({
-        question: null,
-        message: "Generating questions failed. Try again.",
+        question: stripAnswer({ ...repeat, choices }),
+        choiceMap,
       });
     }
 
-    return NextResponse.json({ question: stripAnswer(generated) });
+    return NextResponse.json({
+      question: null,
+      message: "Generating questions failed. Try again.",
+    });
   } catch (err) {
     console.error("Question fetch error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

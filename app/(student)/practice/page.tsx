@@ -11,6 +11,7 @@ export default function PracticePage() {
     sessionId,
     isActive,
     currentQuestion,
+    currentChoiceMap: choiceMap,
     showFeedback,
     lastAnswerCorrect,
     lastCorrectAnswer,
@@ -30,10 +31,6 @@ export default function PracticePage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  // For SR-review questions the server shuffles choices and re-labels
-  // them; choiceMap[displayedLabel] = originalLabel. Null for fresh
-  // questions where the displayed labels match the stored labels 1:1.
-  const [choiceMap, setChoiceMap] = useState<Record<string, string> | null>(null);
   const [lastEarned, setLastEarned] = useState<number | null>(null);
   const [earnedThisWeek, setEarnedThisWeek] = useState(0);
   const [sessionEarned, setSessionEarned] = useState(0);
@@ -48,8 +45,9 @@ export default function PracticePage() {
       if (!res.ok) return;
       const data = await res.json();
       if (data.question) {
-        setCurrentQuestion(data.question);
-        setChoiceMap(data.choiceMap ?? null);
+        // The choice map is stored alongside the question (in the
+        // session store) so a page remount can't split them apart.
+        setCurrentQuestion(data.question, data.choiceMap ?? null);
         setSelectedAnswer(null);
         setLastEarned(null);
         answerStartTime.current = Date.now();

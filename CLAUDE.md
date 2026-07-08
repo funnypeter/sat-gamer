@@ -73,6 +73,11 @@ The selector cascade (first match wins):
 5. Any source in any category within Elo band.
 6. Any unseen question at any difficulty (last-resort, only if Elo band is empty).
 7. Returns null → route triggers Gemini generation targeting a weak category at the right difficulty band.
+8. Only if generation *fails* does the route call the selector again with `{ allowRepeats: true }`, re-serving an already-answered question (never one from the current session), always with shuffled choices.
+
+The cascade itself never re-serves answered questions — steps 2-6 filter to never-answered only. Previously-answered questions come back solely via spaced repetition (step 1) or the step-8 fallback.
+
+**Shuffled servings and `choiceMap`**: SR reviews and repeat fallbacks are served with shuffled, re-labeled choices plus a `choiceMap` (displayed label → original label). The client must translate the student's pick back to original-label space before POSTing to `/api/sessions/answer`, and translate `correctAnswer`/`explanations` in the response back to displayed space. The map is kept in the Zustand session store **next to `currentQuestion`** (set atomically via `setCurrentQuestion(question, choiceMap)`) — never in page-local state, which resets on remount while the store's question survives, silently grading against the wrong letters.
 
 CB-first means a student is always served authentic CB content when an Elo-appropriate one exists, before any AI-generated content. The `cbOnly` filter inside `findUnseen()` is the mechanism — it adds an `or("generated_by.eq.collegeboard,generated_by.eq.collegeboard-classified")` to the query.
 
