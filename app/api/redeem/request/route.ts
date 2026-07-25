@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatMinutes } from "@/lib/constants";
+import { sendPushToUsers } from "@/lib/push";
 
 export async function POST(request: Request) {
   try {
@@ -93,6 +94,19 @@ export async function POST(request: Request) {
         }));
 
         await admin.from("notifications").insert(notifications);
+
+        // Push alert to every parent device that opted in. Best-effort:
+        // sendPushToUsers never throws, so a push outage can't block the
+        // redemption request itself.
+        await sendPushToUsers(
+          admin,
+          parents.map((p) => p.id),
+          {
+            title: "Gaming time request",
+            body: `${profile.display_name} wants to cash in ${formatMinutes(requestedMinutes)} min for: ${activityDescription || "Gaming time"}`,
+            url: "/parent-dashboard",
+          }
+        );
       }
     }
 

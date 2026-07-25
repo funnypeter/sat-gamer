@@ -5,6 +5,7 @@ import InviteCodeCard from "@/components/parent/InviteCodeCard";
 import ParentInviteCard from "@/components/parent/ParentInviteCard";
 import AvatarUpload from "@/components/shared/AvatarUpload";
 import ImportQuestionsButton from "@/components/parent/ImportQuestionsButton";
+import PushAlertsCard from "@/components/parent/PushAlertsCard";
 
 export default async function SettingsPage() {
   const supabase = createClient();
@@ -41,6 +42,11 @@ export default async function SettingsPage() {
             <p className="text-xs text-gray-500 mt-1">Tap photo to change</p>
           </div>
         </div>
+      </section>
+
+      <section>
+        <h3 className="mb-4 text-lg font-semibold text-white">Alerts</h3>
+        <PushAlertsCard />
       </section>
 
       <section>
