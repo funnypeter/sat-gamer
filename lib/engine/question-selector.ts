@@ -75,13 +75,21 @@ export async function selectNextQuestion(
   currentSessionId?: string,
   opts?: { allowRepeats?: boolean }
 ): Promise<Question | null> {
-  // Get ALL question IDs this student has ever answered
-  const { data: answered } = await supabase
-    .from("student_questions")
-    .select("question_id")
-    .eq("student_id", studentId);
-
-  const answeredIds = new Set((answered ?? []).map((a: { question_id: string }) => a.question_id));
+  // Get ALL question IDs this student has ever answered. Paged: PostgREST
+  // caps any single response at 1000 rows, and an active student crosses
+  // that after a few months — unpaged, older answers silently drop out of
+  // the exclusion set and start getting re-served.
+  const answeredIds = new Set<string>();
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data: page } = await supabase
+      .from("student_questions")
+      .select("question_id")
+      .eq("student_id", studentId)
+      .range(from, from + PAGE - 1);
+    for (const a of page ?? []) answeredIds.add(a.question_id);
+    if (!page || page.length < PAGE) break;
+  }
 
   // Also get questions answered in THIS session (to avoid repeats within a session)
   let sessionAnsweredIds = new Set<string>();
@@ -241,28 +249,40 @@ async function findUnseen(
 ): Promise<Question | null> {
   // Fetch ids only so the candidate window can be wide without
   // shipping hundreds of passages over the wire; the winner's full row
-  // is fetched afterwards.
-  let query = supabase.from("questions").select("id").limit(1000);
+  // is fetched afterwards. Paged past PostgREST's 1000-row cap so wide
+  // tiers (e.g. the no-filter last resort) see the whole pool — an
+  // unpaged fetch would only ever expose the same first 1000 rows.
+  const candidates: Array<{ id: string }> = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    let query = supabase
+      .from("questions")
+      .select("id")
+      .order("id")
+      .range(from, from + PAGE - 1);
 
-  if (filters.categories && filters.categories.length > 0) {
-    query = query.in("category", filters.categories);
-  }
-  if (filters.eloMin !== undefined) {
-    query = query.gte("difficulty_rating", filters.eloMin);
-  }
-  if (filters.eloMax !== undefined) {
-    query = query.lte("difficulty_rating", filters.eloMax);
-  }
-  if (filters.cbOnly) {
-    // Match both the canonical "collegeboard" tag and any classified
-    // variant the importer might emit in the future.
-    query = query.or(
-      "generated_by.eq.collegeboard,generated_by.eq.collegeboard-classified"
-    );
-  }
+    if (filters.categories && filters.categories.length > 0) {
+      query = query.in("category", filters.categories);
+    }
+    if (filters.eloMin !== undefined) {
+      query = query.gte("difficulty_rating", filters.eloMin);
+    }
+    if (filters.eloMax !== undefined) {
+      query = query.lte("difficulty_rating", filters.eloMax);
+    }
+    if (filters.cbOnly) {
+      // Match both the canonical "collegeboard" tag and any classified
+      // variant the importer might emit in the future.
+      query = query.or(
+        "generated_by.eq.collegeboard,generated_by.eq.collegeboard-classified"
+      );
+    }
 
-  const { data: candidates } = await query;
-  if (!candidates || candidates.length === 0) return null;
+    const { data: page } = await query;
+    candidates.push(...(page ?? []));
+    if (!page || page.length < PAGE) break;
+  }
+  if (candidates.length === 0) return null;
 
   const pool = candidates.filter((q: { id: string }) =>
     allowAnswered ? !sessionAnsweredIds.has(q.id) : !answeredIds.has(q.id)

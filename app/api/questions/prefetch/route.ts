@@ -41,7 +41,9 @@ export async function POST() {
     if (!validation.success) return NextResponse.json({ count: 0 });
 
     const rows = validation.data.map((q) => ({ category: targetCategory, passage_text: q.passage_text, question_text: q.question_text, choices: q.choices, correct_answer: q.correct_answer, explanations: q.explanations, difficulty_rating: q.difficulty_rating, generated_by: "gemini" }));
-    await admin.from("questions").insert(rows);
+    await admin
+      .from("questions")
+      .upsert(rows, { onConflict: "content_hash", ignoreDuplicates: true });
 
     return NextResponse.json({ count: rows.length });
   } catch {

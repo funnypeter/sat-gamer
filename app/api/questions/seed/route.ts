@@ -39,7 +39,9 @@ export async function POST() {
               difficulty_rating: q.difficulty_rating,
               generated_by: "gemini",
             }));
-            await admin.from("questions").insert(rows);
+            await admin
+              .from("questions")
+              .upsert(rows, { onConflict: "content_hash", ignoreDuplicates: true });
             totalGenerated += rows.length;
           } else {
             errors.push(`${category}/${band}: validation failed`);

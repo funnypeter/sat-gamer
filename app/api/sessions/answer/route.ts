@@ -47,6 +47,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Question not found" }, { status: 404 });
     }
 
+    // Idempotency: if this question was already recorded in this session
+    // (double-submit after a network flake, or a stale client re-showing
+    // an answered question), return the recorded result instead of
+    // writing a second row and double-counting stats/earnings.
+    const { data: alreadyAnswered } = await admin
+      .from("student_questions")
+      .select("is_correct")
+      .eq("session_id", sessionId)
+      .eq("question_id", questionId)
+      .limit(1)
+      .maybeSingle();
+
+    if (alreadyAnswered) {
+      return NextResponse.json({
+        isCorrect: alreadyAnswered.is_correct,
+        correctAnswer: question.correct_answer,
+        explanations: question.explanations,
+        eloChange: 0,
+        newElo: null,
+        minutesAwarded: 0,
+        earnedThisWeek: 0,
+        weeklyCap: DEFAULT_SETTINGS.weeklyCapMinutes,
+        difficulty: question.difficulty_rating >= 600 ? "hard" : question.difficulty_rating >= 450 ? "medium" : "easy",
+        duplicate: true,
+      });
+    }
+
     // Reclassify CB questions on first answer (one-time Gemini call)
     if (question.generated_by === "collegeboard") {
       try {

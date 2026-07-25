@@ -93,7 +93,7 @@ export async function POST(request: Request) {
 
     const { error: insertError } = await adminClient
       .from("questions")
-      .insert(rows);
+      .upsert(rows, { onConflict: "content_hash", ignoreDuplicates: true });
 
     if (insertError) {
       return NextResponse.json(

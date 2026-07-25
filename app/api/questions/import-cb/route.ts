@@ -133,7 +133,13 @@ export async function POST(request: Request) {
     let inserted = 0;
     for (let i = 0; i < rows.length; i += CHUNK) {
       const chunk = rows.slice(i, i + CHUNK);
-      const { error: insertError } = await admin.from("questions").insert(chunk);
+      // ignoreDuplicates on content_hash: re-running an import silently
+      // skips questions already in the DB instead of creating duplicate
+      // rows the selector would treat as unseen and re-serve to students.
+      const { data: insertedRows, error: insertError } = await admin
+        .from("questions")
+        .upsert(chunk, { onConflict: "content_hash", ignoreDuplicates: true })
+        .select("id");
       if (insertError) {
         return NextResponse.json(
           {
@@ -145,7 +151,7 @@ export async function POST(request: Request) {
           { status: 500 }
         );
       }
-      inserted += chunk.length;
+      inserted += insertedRows?.length ?? 0;
     }
 
     // 6. Tell the caller which domain to do next.

@@ -51,6 +51,7 @@ export default async function StudentDetailPage({
     { data: stats },
     { data: streak },
     { data: recentAnswers },
+    { data: avgTimes },
   ] = await Promise.all([
     admin
       .from("student_stats")
@@ -67,6 +68,7 @@ export default async function StudentDetailPage({
       .eq("student_id", params.id)
       .order("answered_at", { ascending: false })
       .limit(10),
+    admin.rpc("avg_time_by_category", { p_student_id: params.id }),
   ]);
 
   // Overall stats
@@ -85,11 +87,14 @@ export default async function StudentDetailPage({
     const attempted = stat ? Number(stat.total_attempted) : 0;
     const correct = stat ? Number(stat.total_correct) : 0;
     const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const avgRow = (avgTimes ?? []).find((t: any) => t.category === cat);
     return {
       category: cat,
       accuracy,
       eloRating: stat ? Number(stat.elo_rating) : 500,
       attempted,
+      avgSeconds: avgRow ? Number(avgRow.avg_seconds) : null,
     };
   });
 
@@ -200,6 +205,11 @@ export default async function StudentDetailPage({
                 <span className="text-gray-300 truncate mr-4">{cat.category}</span>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-xs text-gray-500">{cat.attempted} Qs</span>
+                  {cat.avgSeconds !== null && (
+                    <span className="text-xs text-sky-400" title="Average time per question">
+                      {formatAvgTime(cat.avgSeconds)} avg
+                    </span>
+                  )}
                   <span className="text-xs text-purple-400">Elo {cat.eloRating}</span>
                   <span className={`font-medium min-w-[3ch] text-right ${cat.accuracy >= 70 ? "text-accent-green" : cat.accuracy >= 50 ? "text-accent-gold" : cat.attempted === 0 ? "text-gray-500" : "text-accent-red"}`}>
                     {cat.attempted > 0 ? `${cat.accuracy}%` : "--"}
@@ -280,6 +290,12 @@ export default async function StudentDetailPage({
       </section>
     </div>
   );
+}
+
+function formatAvgTime(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${(s % 60).toString().padStart(2, "0")}s`;
 }
 
 function getTimeAgo(dateStr: string): string {

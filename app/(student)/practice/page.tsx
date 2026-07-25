@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import QuestionCard from "@/components/student/QuestionCard";
 import FeedbackOverlay from "@/components/student/FeedbackOverlay";
+import QuestionStopwatch from "@/components/student/QuestionStopwatch";
 import { remapExplanationsToDisplayed } from "@/lib/cb-rationale";
 
 export default function PracticePage() {
@@ -34,15 +35,32 @@ export default function PracticePage() {
   const [lastEarned, setLastEarned] = useState<number | null>(null);
   const [earnedThisWeek, setEarnedThisWeek] = useState(0);
   const [sessionEarned, setSessionEarned] = useState(0);
+  const [questionStartedAt, setQuestionStartedAt] = useState<number | null>(null);
+  const [showTimer, setShowTimer] = useState(false);
   const answerStartTime = useRef<number>(Date.now());
   const retryCount = useRef(0);
+
+  useEffect(() => {
+    fetch("/api/profile/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setShowTimer(Boolean(data?.showQuestionTimer)))
+      .catch(() => {});
+  }, []);
 
   const fetchNextQuestion = useCallback(async () => {
     try {
       setError(null);
+      // Clear the outgoing question BEFORE fetching. If the fetch fails,
+      // the previous (already answered) question must not stay on screen
+      // and answerable — that re-records it as a duplicate attempt.
+      setCurrentQuestion(null);
+      setSelectedAnswer(null);
       const params = sessionId ? `?sessionId=${sessionId}` : "";
       const res = await fetch(`/api/questions/next${params}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError("Failed to load the next question.");
+        return;
+      }
       const data = await res.json();
       if (data.question) {
         // The choice map is stored alongside the question (in the
@@ -51,6 +69,7 @@ export default function PracticePage() {
         setSelectedAnswer(null);
         setLastEarned(null);
         answerStartTime.current = Date.now();
+        setQuestionStartedAt(Date.now());
         retryCount.current = 0;
       } else if (retryCount.current < 3) {
         retryCount.current++;
@@ -241,12 +260,23 @@ export default function PracticePage() {
               Skip to next question →
             </button>
           )}
+          {!currentQuestion && !showFeedback && (
+            <button
+              onClick={() => fetchNextQuestion()}
+              className="block mt-2 text-accent-blue hover:underline font-semibold"
+            >
+              Try again →
+            </button>
+          )}
         </div>
       )}
 
       {/* Question */}
       {currentQuestion && !showFeedback && (
         <>
+          {showTimer && questionStartedAt !== null && (
+            <QuestionStopwatch startAt={questionStartedAt} />
+          )}
           <QuestionCard
             question={currentQuestion}
             onAnswer={(answer) => setSelectedAnswer(answer)}

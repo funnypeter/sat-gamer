@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import AvatarUpload from "@/components/shared/AvatarUpload";
 import SignOutButton from "@/components/shared/SignOutButton";
+import TimerSettingToggle from "@/components/student/TimerSettingToggle";
 
 export default async function StudentProfilePage() {
   const supabase = createClient();
@@ -10,7 +11,7 @@ export default async function StudentProfilePage() {
   if (!user) redirect("/login");
 
   const admin = createAdminClient();
-  const { data: profile } = await admin.from("users").select("display_name, email, avatar_url").eq("id", user.id).single();
+  const { data: profile } = await admin.from("users").select("display_name, email, avatar_url, show_question_timer").eq("id", user.id).single();
   if (!profile) redirect("/login");
 
   return (
@@ -29,6 +30,11 @@ export default async function StudentProfilePage() {
             <p className="text-xs text-gray-500 mt-1">Tap photo to change</p>
           </div>
         </div>
+      </div>
+
+      <div className="card-glass p-6 space-y-1">
+        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Settings</h3>
+        <TimerSettingToggle initialEnabled={profile.show_question_timer ?? true} />
       </div>
 
       <SignOutButton />

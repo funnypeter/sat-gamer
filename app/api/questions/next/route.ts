@@ -162,7 +162,7 @@ async function generateAndServe(
     }));
     const { data: inserted } = await admin
       .from("questions")
-      .insert(rows)
+      .upsert(rows, { onConflict: "content_hash", ignoreDuplicates: true })
       .select();
     return inserted && inserted.length > 0 ? inserted[0] : null;
   } catch (err) {
