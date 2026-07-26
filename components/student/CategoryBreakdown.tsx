@@ -9,7 +9,16 @@ interface CategoryStat {
   total_correct: number;
 }
 
-export default function CategoryBreakdown({ stats }: { stats: CategoryStat[] }) {
+export default function CategoryBreakdown({
+  stats,
+  avgTimes,
+  overallAvgSeconds,
+}: {
+  stats: CategoryStat[];
+  /** Average answer time in seconds, keyed by category. */
+  avgTimes?: Record<string, number>;
+  overallAvgSeconds?: number | null;
+}) {
   const [open, setOpen] = useState(false);
 
   // Top 3 weakest for the collapsed preview
@@ -31,7 +40,10 @@ export default function CategoryBreakdown({ stats }: { stats: CategoryStat[] }) 
           </div>
           <div className="text-left">
             <p className="text-sm font-semibold text-white">Category Performance</p>
-            <p className="text-xs text-gray-400">{Math.round(overallAcc)}% overall · {stats.length} categories</p>
+            <p className="text-xs text-gray-400">
+              {Math.round(overallAcc)}% overall · {stats.length} categories
+              {overallAvgSeconds ? ` · ${Math.round(overallAvgSeconds)}s avg` : ""}
+            </p>
           </div>
         </div>
         <svg className={`h-5 w-5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -76,9 +88,14 @@ export default function CategoryBreakdown({ stats }: { stats: CategoryStat[] }) 
                     <span className="text-[11px] text-gray-400 w-8 text-right">{acc}%</span>
                   </div>
                 </div>
-                <div className="text-right shrink-0 w-12">
+                <div className="text-right shrink-0 w-14">
                   <p className={`text-xs font-bold ${eloColor}`}>{cat.elo_rating}</p>
                   <p className="text-[9px] text-gray-500">{cat.total_attempted} Qs</p>
+                  {avgTimes?.[cat.category] !== undefined && (
+                    <p className="text-[9px] text-sky-400">
+                      {Math.round(avgTimes[cat.category])}s avg
+                    </p>
+                  )}
                 </div>
               </div>
             );

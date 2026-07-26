@@ -71,6 +71,22 @@ export default async function StudentDashboard() {
     .eq("student_id", user.id)
     .order("elo_rating", { ascending: true });
 
+  // Average answer time per category (same RPC the parent detail page uses)
+  const { data: avgTimeRows } = await admin.rpc("avg_time_by_category", {
+    p_student_id: user.id,
+  });
+  const avgTimes: Record<string, number> = {};
+  let timedAttempts = 0;
+  let timedTotalSeconds = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (avgTimeRows ?? []) as any[]) {
+    avgTimes[row.category] = Number(row.avg_seconds);
+    timedAttempts += Number(row.attempts);
+    timedTotalSeconds += Number(row.avg_seconds) * Number(row.attempts);
+  }
+  const overallAvgSeconds =
+    timedAttempts > 0 ? timedTotalSeconds / timedAttempts : null;
+
   const avgElo =
     categoryStats && categoryStats.length > 0
       ? Math.round(
@@ -167,7 +183,11 @@ export default async function StudentDashboard() {
 
       {/* Category Breakdown — collapsed by default */}
       {categoryStats && categoryStats.length > 0 && (
-        <CategoryBreakdown stats={categoryStats} />
+        <CategoryBreakdown
+          stats={categoryStats}
+          avgTimes={avgTimes}
+          overallAvgSeconds={overallAvgSeconds}
+        />
       )}
 
       <div className="grid grid-cols-2 gap-3">
