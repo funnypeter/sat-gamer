@@ -36,6 +36,7 @@ export default function PracticePage() {
   const [earnedThisWeek, setEarnedThisWeek] = useState(0);
   const [sessionEarned, setSessionEarned] = useState(0);
   const [questionStartedAt, setQuestionStartedAt] = useState<number | null>(null);
+  const [questionStoppedAt, setQuestionStoppedAt] = useState<number | null>(null);
   const [showTimer, setShowTimer] = useState(false);
   const answerStartTime = useRef<number>(Date.now());
   const retryCount = useRef(0);
@@ -70,6 +71,7 @@ export default function PracticePage() {
         setLastEarned(null);
         answerStartTime.current = Date.now();
         setQuestionStartedAt(Date.now());
+        setQuestionStoppedAt(null);
         retryCount.current = 0;
       } else if (retryCount.current < 3) {
         retryCount.current++;
@@ -110,7 +112,13 @@ export default function PracticePage() {
     setSelectedAnswer(answer);
     setSubmitting(true);
 
-    const timeSpent = Math.round((Date.now() - answerStartTime.current) / 1000);
+    // Freeze the clock the instant they submit. Everything after this point
+    // is server round-trip, not thinking time — and timeSpent below is
+    // measured from the same moment, so the display matches what's recorded.
+    const submittedAt = Date.now();
+    setQuestionStoppedAt(submittedAt);
+
+    const timeSpent = Math.round((submittedAt - answerStartTime.current) / 1000);
     // Translate displayed label back to the question's original label
     // so the server can compare against the stored correct_answer.
     const answerToSubmit = choiceMap?.[answer] ?? answer;
@@ -128,7 +136,13 @@ export default function PracticePage() {
       });
 
       const data = await res.json();
-      if (!res.ok) { setError(data.error || "Failed to submit answer"); return; }
+      if (!res.ok) {
+        // Submission failed — they're still on the question, so the clock
+        // should keep running rather than sit frozen through a retry.
+        setQuestionStoppedAt(null);
+        setError(data.error || "Failed to submit answer");
+        return;
+      }
 
       // Translate the original-label correctAnswer/explanations back
       // into displayed-label space so FeedbackOverlay highlights and
@@ -162,6 +176,7 @@ export default function PracticePage() {
         setEarnedThisWeek(data.earnedThisWeek ?? 0);
       }
     } catch {
+      setQuestionStoppedAt(null);
       setError("Failed to submit answer");
     } finally {
       setSubmitting(false);
@@ -275,7 +290,7 @@ export default function PracticePage() {
       {currentQuestion && !showFeedback && (
         <>
           {showTimer && questionStartedAt !== null && (
-            <QuestionStopwatch startAt={questionStartedAt} />
+            <QuestionStopwatch startAt={questionStartedAt} stopAt={questionStoppedAt} />
           )}
           <QuestionCard
             question={currentQuestion}
@@ -308,6 +323,7 @@ export default function PracticePage() {
           selectedAnswer={selectedAnswer ?? ""}
           explanations={lastExplanations ?? {}}
           choices={currentQuestion?.choices ?? []}
+          choiceMap={choiceMap}
           onNext={handleNext}
         />
       )}

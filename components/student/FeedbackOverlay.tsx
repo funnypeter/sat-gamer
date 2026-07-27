@@ -13,6 +13,8 @@ interface FeedbackOverlayProps {
   selectedAnswer: string;
   explanations: Record<string, string>;
   choices: QuestionChoice[];
+  /** Displayed label -> original label for shuffled servings; see AskGeminiChat. */
+  choiceMap?: Record<string, string> | null;
   onNext: () => void;
 }
 
@@ -23,6 +25,7 @@ export default function FeedbackOverlay({
   selectedAnswer,
   explanations,
   choices,
+  choiceMap = null,
   onNext,
 }: FeedbackOverlayProps) {
   const [chatOpen, setChatOpen] = useState(false);
@@ -171,6 +174,7 @@ export default function FeedbackOverlay({
         <AskGeminiChat
           questionId={questionId}
           suggestions={chatSuggestions}
+          choiceMap={choiceMap}
           onClose={() => setChatOpen(false)}
         />
       )}

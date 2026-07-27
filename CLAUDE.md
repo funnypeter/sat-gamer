@@ -81,6 +81,15 @@ The cascade itself never re-serves answered questions — steps 2-6 filter to ne
 
 CB-first means a student is always served authentic CB content when an Elo-appropriate one exists, before any AI-generated content. The `cbOnly` filter inside `findUnseen()` is the mechanism — it adds an `or("generated_by.eq.collegeboard,generated_by.eq.collegeboard-classified")` to the query.
 
+### AI tutor — `app/api/questions/explain/route.ts`
+
+The "Ask Gemini" chat, opened from `FeedbackOverlay` (practice) and `ReviewCard` (review).
+
+- **Replies stream.** The route returns a `ReadableStream` of plain text from `sendMessageStream`; the client reads `res.body` and appends chunks as they arrive. Don't revert it to a JSON `{ reply }` payload — the wait is several seconds and a spinner reads as a hang.
+- **Thinking is disabled** (`generationConfig.thinkingConfig.thinkingBudget: 0`). 2.5 Flash spends output tokens on internal thinking before it writes anything, so a small `maxOutputTokens` gets consumed by reasoning and the visible reply stops mid-sentence. `thinkingConfig` isn't in the 0.x SDK's types so it's cast; if the endpoint ever rejects it, the route retries once without it and with a much larger token budget.
+- **Shuffled servings**: the client passes the `choiceMap` alongside `questionId`. The route remaps choices, correct answer, explanations, and the student's own answer into displayed-label space — without it the tutor reasons about letters the student never saw.
+- The system prompt deliberately forbids paraphrasing the official College Board rationale. The student is in the chat *because* that rationale didn't land; restating it is the top complaint.
+
 ### Earning rates — `app/api/sessions/answer/route.ts`
 
 Per-question gaming-time reward by `difficulty_rating` bucket (constants in `lib/constants.ts`):
@@ -90,6 +99,8 @@ Per-question gaming-time reward by `difficulty_rating` bucket (constants in `lib
 - `incorrect`: 0 min
 
 Capped at 45 minutes per rolling 7-day window (`DEFAULT_SETTINGS.weeklyCapMinutes`).
+
+**This route sits between "Submit" and the feedback screen, so it is latency-critical.** Reads run in two `Promise.all` batches and all writes in a third; nothing is awaited serially without reason. It used to re-categorize CB questions with a blocking Gemini call on the first answer to each one, which put a multi-second AI round-trip in front of every feedback screen — and was redundant, since the importer already derives the category from CB's granular `skill_cd`. **Never put an AI call in this path.**
 
 ### Spaced repetition — `app/api/sessions/answer/route.ts:185-218`
 
@@ -104,6 +115,7 @@ Single-pass review (not full SM-2):
 - `components/student/QuestionCard.tsx` and `components/student/FeedbackOverlay.tsx` both render question content via `dangerouslySetInnerHTML` through the shared sanitizer in `lib/sanitize.ts` (allows `u/b/i/em/strong/br/p/sup/sub`).
 - `FeedbackOverlay` calls `splitCbRationale()` (defined inline in that file) to break CB's monolithic "Choice X is the best answer... Choice Y is incorrect..." rationale into per-choice chunks at display time. Gemini explanations are already per-choice and pass through unchanged.
 - `QuestionCard` has defensive rendering for the meta-prompt bug via `isMetaPromptPassage()` from `lib/sanitize.ts` (see below).
+- `QuestionStopwatch` **freezes at submit** (`stopAt` prop, set from the same timestamp used for `timeSpentSeconds`). Server round-trip is not thinking time, and a clock that keeps running past submit reads as the app charging you for its own latency.
 
 ## Known issue: meta-prompt passages
 

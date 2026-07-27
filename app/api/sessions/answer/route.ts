@@ -2,9 +2,15 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateNewElo } from "@/lib/engine/elo";
-import { DEFAULT_SETTINGS, EARNING_RATES, DSAT_CATEGORIES } from "@/lib/constants";
-import { getGeminiModel } from "@/lib/gemini/client";
+import { DEFAULT_SETTINGS, EARNING_RATES } from "@/lib/constants";
 import { startOfWeekInAppTimezone } from "@/lib/date";
+
+// NOTE: CB questions used to be re-categorized by a blocking Gemini call here,
+// on the first answer to each one. That put a multi-second AI round-trip
+// between "Submit" and the feedback screen. It was also redundant — the
+// importer already derives the category from CB's granular skill_cd, which is
+// a 1-to-1 mapping onto our 10 DSAT categories and strictly more reliable than
+// asking a model to guess. Don't reintroduce it.
 
 function getMinutesPerQuestion(isCorrect: boolean, difficultyRating: number): number {
   if (isCorrect) {
@@ -36,28 +42,28 @@ export async function POST(request: Request) {
       timeSpentSeconds: number;
     };
 
-    // Fetch the question
-    const { data: question } = await admin
-      .from("questions")
-      .select("*")
-      .eq("id", questionId)
-      .single();
-
-    if (!question) {
-      return NextResponse.json({ error: "Question not found" }, { status: 404 });
-    }
-
+    // This route sits between "Submit" and the feedback screen, so every
+    // round-trip here is dead time the student stares at. Independent reads
+    // and writes are batched rather than awaited one at a time.
+    //
     // Idempotency: if this question was already recorded in this session
     // (double-submit after a network flake, or a stale client re-showing
     // an answered question), return the recorded result instead of
     // writing a second row and double-counting stats/earnings.
-    const { data: alreadyAnswered } = await admin
-      .from("student_questions")
-      .select("is_correct")
-      .eq("session_id", sessionId)
-      .eq("question_id", questionId)
-      .limit(1)
-      .maybeSingle();
+    const [{ data: question }, { data: alreadyAnswered }] = await Promise.all([
+      admin.from("questions").select("*").eq("id", questionId).single(),
+      admin
+        .from("student_questions")
+        .select("is_correct")
+        .eq("session_id", sessionId)
+        .eq("question_id", questionId)
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (!question) {
+      return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    }
 
     if (alreadyAnswered) {
       return NextResponse.json({
@@ -74,45 +80,47 @@ export async function POST(request: Request) {
       });
     }
 
-    // Reclassify CB questions on first answer (one-time Gemini call)
-    if (question.generated_by === "collegeboard") {
-      try {
-        const model = getGeminiModel();
-        const categoryList = DSAT_CATEGORIES.join(", ");
-        const prompt = `Classify this Digital SAT Reading & Writing question into exactly one category.
-
-Categories: ${categoryList}
-
-Passage: ${(question.passage_text as string).substring(0, 500)}
-Question: ${question.question_text}
-
-Reply with ONLY the category name, nothing else.`;
-
-        const result = await model.generateContent(prompt);
-        const classified = result.response.text().trim();
-        const match = DSAT_CATEGORIES.find((c) => c === classified);
-        if (match) {
-          question.category = match;
-        }
-        await admin
-          .from("questions")
-          .update({ category: question.category, generated_by: "collegeboard-classified" })
-          .eq("id", questionId);
-      } catch {
-        // Classification failed — use the keyword-based category as-is
-      }
-    }
-
     const isCorrect = answerGiven === question.correct_answer;
 
-    // Get or create student stats for this category
-    let { data: stats } = await admin
-      .from("student_stats")
-      .select("*")
-      .eq("student_id", user.id)
-      .eq("category", question.category)
-      .single();
+    // Check weekly cap. Resets Monday at midnight Pacific — not a
+    // rolling 7-day window — so a student always has a predictable
+    // "fresh week" moment regardless of when they last maxed out.
+    const weekStart = startOfWeekInAppTimezone();
 
+    // Everything below depends only on the question row, so read it all at once.
+    const [
+      { data: existingStats },
+      { data: weekBalances },
+      { data: session },
+      { data: existingSR },
+    ] = await Promise.all([
+      admin
+        .from("student_stats")
+        .select("*")
+        .eq("student_id", user.id)
+        .eq("category", question.category)
+        .maybeSingle(),
+      admin
+        .from("time_balances")
+        .select("minutes_earned")
+        .eq("student_id", user.id)
+        .gte("earned_at", weekStart.toISOString()),
+      admin
+        .from("sessions")
+        .select("total_questions, correct_count, minutes_earned")
+        .eq("id", sessionId)
+        .single(),
+      isCorrect
+        ? Promise.resolve({ data: null })
+        : admin
+            .from("spaced_repetition")
+            .select("*")
+            .eq("student_id", user.id)
+            .eq("question_id", questionId)
+            .maybeSingle(),
+    ]);
+
+    let stats = existingStats;
     if (!stats) {
       const { data: newStats } = await admin
         .from("student_stats")
@@ -131,120 +139,119 @@ Reply with ONLY the category name, nothing else.`;
     const eloBefore = stats?.elo_rating ?? 500;
     const eloAfter = calculateNewElo(eloBefore, question.difficulty_rating, isCorrect);
 
-    // Record the answer
-    await admin.from("student_questions").insert({
-      session_id: sessionId,
-      student_id: user.id,
-      question_id: questionId,
-      answer_given: answerGiven,
-      is_correct: isCorrect,
-      time_spent_seconds: timeSpentSeconds,
-      elo_before: eloBefore,
-      elo_after: eloAfter,
-    });
-
-    // Update student stats
-    await admin
-      .from("student_stats")
-      .update({
-        elo_rating: eloAfter,
-        total_attempted: (stats?.total_attempted ?? 0) + 1,
-        total_correct: (stats?.total_correct ?? 0) + (isCorrect ? 1 : 0),
-        last_practiced: new Date().toISOString(),
-      })
-      .eq("student_id", user.id)
-      .eq("category", question.category);
-
     // Calculate per-question time earned
     const minutesForQuestion = getMinutesPerQuestion(isCorrect, question.difficulty_rating);
-
-    // Check weekly cap. Resets Monday at midnight Pacific — not a
-    // rolling 7-day window — so a student always has a predictable
-    // "fresh week" moment regardless of when they last maxed out.
-    const weekStart = startOfWeekInAppTimezone();
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: weekBalances } = await admin
-      .from("time_balances")
-      .select("minutes_earned")
-      .eq("student_id", user.id)
-      .gte("earned_at", weekStart.toISOString());
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const earnedThisWeek = weekBalances?.reduce((sum: number, b: any) => sum + Number(b.minutes_earned), 0) ?? 0;
     const weeklyCap = DEFAULT_SETTINGS.weeklyCapMinutes;
     const minutesAwarded = Math.min(minutesForQuestion, Math.max(0, weeklyCap - earnedThisWeek));
 
+    const tomorrow = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0];
+
+    // Every write below is independent of the others — run them together
+    // rather than paying a serial round-trip for each.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const writes: PromiseLike<any>[] = [
+      // Record the answer
+      admin.from("student_questions").insert({
+        session_id: sessionId,
+        student_id: user.id,
+        question_id: questionId,
+        answer_given: answerGiven,
+        is_correct: isCorrect,
+        time_spent_seconds: timeSpentSeconds,
+        elo_before: eloBefore,
+        elo_after: eloAfter,
+      }),
+      // Update student stats
+      admin
+        .from("student_stats")
+        .update({
+          elo_rating: eloAfter,
+          total_attempted: (stats?.total_attempted ?? 0) + 1,
+          total_correct: (stats?.total_correct ?? 0) + (isCorrect ? 1 : 0),
+          last_practiced: new Date().toISOString(),
+        })
+        .eq("student_id", user.id)
+        .eq("category", question.category),
+    ];
+
     // Award time if any
     if (minutesAwarded > 0) {
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + DEFAULT_SETTINGS.decayDays * 24 * 60 * 60 * 1000);
-      await admin.from("time_balances").insert({
-        student_id: user.id,
-        session_id: sessionId,
-        minutes_earned: minutesAwarded,
-        minutes_remaining: minutesAwarded,
-        expires_at: expiresAt.toISOString(),
-      });
+      const expiresAt = new Date(
+        Date.now() + DEFAULT_SETTINGS.decayDays * 24 * 60 * 60 * 1000
+      );
+      writes.push(
+        admin.from("time_balances").insert({
+          student_id: user.id,
+          session_id: sessionId,
+          minutes_earned: minutesAwarded,
+          minutes_remaining: minutesAwarded,
+          expires_at: expiresAt.toISOString(),
+        })
+      );
     }
 
     // Update session totals
-    const { data: session } = await admin
-      .from("sessions")
-      .select("total_questions, correct_count, minutes_earned")
-      .eq("id", sessionId)
-      .single();
-
     if (session) {
       const newTotal = session.total_questions + 1;
       const newCorrect = session.correct_count + (isCorrect ? 1 : 0);
-      await admin
-        .from("sessions")
-        .update({
-          total_questions: newTotal,
-          correct_count: newCorrect,
-          accuracy: newTotal > 0 ? Math.round((newCorrect / newTotal) * 100) : null,
-          minutes_earned: Number(session.minutes_earned) + minutesAwarded,
-        })
-        .eq("id", sessionId);
+      writes.push(
+        admin
+          .from("sessions")
+          .update({
+            total_questions: newTotal,
+            correct_count: newCorrect,
+            accuracy: newTotal > 0 ? Math.round((newCorrect / newTotal) * 100) : null,
+            minutes_earned: Number(session.minutes_earned) + minutesAwarded,
+          })
+          .eq("id", sessionId)
+      );
     }
 
     // Handle spaced repetition
     if (!isCorrect) {
-      const { data: existingSR } = await admin
-        .from("spaced_repetition")
-        .select("*")
-        .eq("student_id", user.id)
-        .eq("question_id", questionId)
-        .single();
-
       if (existingSR) {
-        await admin.from("spaced_repetition").update({
-          next_review_date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-          interval_days: 1,
-          ease_factor: Math.max(1.3, Number(existingSR.ease_factor) - 0.2),
-        }).eq("id", existingSR.id);
+        writes.push(
+          admin
+            .from("spaced_repetition")
+            .update({
+              next_review_date: tomorrow,
+              interval_days: 1,
+              ease_factor: Math.max(1.3, Number(existingSR.ease_factor) - 0.2),
+            })
+            .eq("id", existingSR.id)
+        );
       } else {
-        await admin.from("spaced_repetition").insert({
-          student_id: user.id,
-          question_id: questionId,
-          next_review_date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-          interval_days: 1,
-          ease_factor: 2.5,
-          review_count: 0,
-        });
+        writes.push(
+          admin.from("spaced_repetition").insert({
+            student_id: user.id,
+            question_id: questionId,
+            next_review_date: tomorrow,
+            interval_days: 1,
+            ease_factor: 2.5,
+            review_count: 0,
+          })
+        );
       }
     } else {
       // Correct on a review answer — retire the question from SR rotation.
       // The student already proved they know it once after the original miss,
       // so we don't keep cycling it via expanding intervals. The miss still
       // lives in student_questions, so the Review page's history is intact.
-      await admin
-        .from("spaced_repetition")
-        .delete()
-        .eq("student_id", user.id)
-        .eq("question_id", questionId);
+      writes.push(
+        admin
+          .from("spaced_repetition")
+          .delete()
+          .eq("student_id", user.id)
+          .eq("question_id", questionId)
+      );
     }
+
+    await Promise.all(writes);
 
     return NextResponse.json({
       isCorrect,

@@ -11,6 +11,12 @@ interface AskGeminiChatProps {
   questionId: string;
   /** Shown as quick-start prompts the student can tap. */
   suggestions?: string[];
+  /**
+   * Displayed label -> original label, for shuffled servings. Without it the
+   * tutor reasons about the question's stored letters while the student is
+   * asking about the letters on their screen.
+   */
+  choiceMap?: Record<string, string> | null;
   onClose: () => void;
 }
 
@@ -23,11 +29,13 @@ const DEFAULT_SUGGESTIONS = [
 export default function AskGeminiChat({
   questionId,
   suggestions = DEFAULT_SUGGESTIONS,
+  choiceMap = null,
   onClose,
 }: AskGeminiChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,7 +56,7 @@ export default function AskGeminiChat({
 
   async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || streaming) return;
 
     setError(null);
     const next: ChatMessage[] = [...messages, { role: "user", text: trimmed }];
@@ -60,18 +68,50 @@ export default function AskGeminiChat({
       const res = await fetch("/api/questions/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId, messages: next }),
+        body: JSON.stringify({ questionId, messages: next, choiceMap }),
       });
-      const data = await res.json();
-      if (!res.ok) {
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
         setError(data.error || "Something went wrong. Try again.");
         return;
       }
-      setMessages((prev) => [...prev, { role: "model", text: data.reply }]);
+
+      // The reply streams in as plain text — render it as it arrives so the
+      // student watches it being written instead of waiting on a spinner.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let reply = "";
+      let started = false;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (!chunk) continue;
+        reply += chunk;
+        if (!started) {
+          started = true;
+          setLoading(false);
+          setStreaming(true);
+          setMessages((prev) => [...prev, { role: "model", text: reply }]);
+        } else {
+          setMessages((prev) => {
+            const copy = [...prev];
+            copy[copy.length - 1] = { role: "model", text: reply };
+            return copy;
+          });
+        }
+      }
+
+      if (!started) {
+        setError("Something went wrong. Try again.");
+      }
     } catch {
       setError("Network error. Check your connection and try again.");
     } finally {
       setLoading(false);
+      setStreaming(false);
       inputRef.current?.focus();
     }
   }
@@ -146,6 +186,11 @@ export default function AskGeminiChat({
                 }`}
               >
                 {m.text}
+                {streaming &&
+                  m.role === "model" &&
+                  i === messages.length - 1 && (
+                    <span className="ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 animate-pulse rounded-sm bg-accent-blue align-baseline" />
+                  )}
               </div>
             </div>
           ))}
@@ -180,12 +225,12 @@ export default function AskGeminiChat({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a follow-up…"
-            disabled={loading}
+            disabled={loading || streaming}
             className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder-gray-500 focus:border-accent-blue/50 focus:outline-none disabled:opacity-60"
           />
           <button
             type="submit"
-            disabled={loading || !input.trim()}
+            disabled={loading || streaming || !input.trim()}
             aria-label="Send"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-blue text-white transition-opacity disabled:opacity-40"
           >

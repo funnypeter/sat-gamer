@@ -5,17 +5,24 @@ import { useEffect, useState } from "react";
 interface QuestionStopwatchProps {
   /** Date.now() timestamp of when the current question was served. */
   startAt: number;
+  /**
+   * Date.now() timestamp of when the student hit Submit. Once set, the clock
+   * freezes here — the seconds spent waiting on the server round-trip are not
+   * the student's thinking time, and are not what gets recorded either.
+   */
+  stopAt?: number | null;
 }
 
-export default function QuestionStopwatch({ startAt }: QuestionStopwatchProps) {
+export default function QuestionStopwatch({ startAt, stopAt = null }: QuestionStopwatchProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    if (stopAt !== null) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [stopAt]);
 
-  const elapsed = Math.max(0, Math.floor((now - startAt) / 1000));
+  const elapsed = Math.max(0, Math.floor(((stopAt ?? now) - startAt) / 1000));
   const minutes = Math.floor(elapsed / 60);
   const seconds = (elapsed % 60).toString().padStart(2, "0");
 
