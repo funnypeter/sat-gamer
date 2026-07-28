@@ -6,6 +6,8 @@ import ParentInviteCard from "@/components/parent/ParentInviteCard";
 import AvatarUpload from "@/components/shared/AvatarUpload";
 import ImportQuestionsButton from "@/components/parent/ImportQuestionsButton";
 import PushAlertsCard from "@/components/parent/PushAlertsCard";
+import VocabBankButton from "@/components/parent/VocabBankButton";
+import { VOCAB_TOTAL } from "@/lib/vocab/word-list";
 
 export default async function SettingsPage() {
   const supabase = createClient();
@@ -25,6 +27,9 @@ export default async function SettingsPage() {
     .select("id", { count: "exact", head: true })
     .in("generated_by", ["collegeboard", "collegeboard-classified"]);
 
+  const { count: vocabItemCount } = await admin
+    .from("vocab_items")
+    .select("id", { count: "exact", head: true });
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -52,6 +57,14 @@ export default async function SettingsPage() {
       <section>
         <h3 className="mb-4 text-lg font-semibold text-white">Question Bank</h3>
         <ImportQuestionsButton existingCount={cbQuestionCount ?? 0} />
+      </section>
+
+      <section>
+        <h3 className="mb-4 text-lg font-semibold text-white">Vocabulary Bank</h3>
+        <VocabBankButton
+          initialItemCount={vocabItemCount ?? 0}
+          totalWords={VOCAB_TOTAL}
+        />
       </section>
 
       {family?.invite_code && (

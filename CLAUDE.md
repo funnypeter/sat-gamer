@@ -2,6 +2,8 @@
 
 Digital SAT (DSAT) Reading & Writing prep app. Students earn gaming time by answering questions; parents oversee progress.
 
+Two practice modes: **passage questions** (`/practice`) and **vocabulary drilling** (`/vocab`). They share the session, earning, and streak machinery but have separate content pipelines, separate progress tracking, and separate reporting.
+
 ## Stack
 
 - **Next.js 14** (App Router) + **TypeScript** + **Tailwind**
@@ -16,24 +18,27 @@ Digital SAT (DSAT) Reading & Writing prep app. Students earn gaming time by answ
 ```
 app/
   (auth)/         login, signup, etc.
-  (student)/      student dashboard, practice, review, leaderboard, profile, redeem
+  (student)/      student dashboard, practice, vocab, review, leaderboard, profile, redeem
   (parent)/       parent-side views
   api/
     questions/    generate, next, prefetch, seed, import-cb, stats
-    sessions/     practice session lifecycle
+    vocab/        next, answer, generate
+    sessions/     practice session lifecycle (shared by both modes)
     students/     student CRUD for parents
     auth/  avatar/  redeem/  debug/
 components/
-  student/        QuestionCard, FeedbackOverlay, PracticeTimer, StreakBadge, ...
+  student/        QuestionCard, FeedbackOverlay, VocabCard, VocabFeedback, PracticeTimer, ...
   parent/  shared/
 lib/
   gemini/         client.ts, prompts.ts, schema.ts
   engine/         elo.ts, question-selector.ts, streak.ts, time-calculator.ts
+  vocab/          word-list.ts, select.ts, mastery.ts, distractors.ts,
+                  generate.ts, prompts.ts, schema.ts, blank.ts
   supabase/       server.ts (RLS), admin.ts (service role), browser client
   collegeboard/   College Board question importer
-  constants.ts    DSAT_CATEGORIES, DIFFICULTY_BANDS
+  constants.ts    DSAT_CATEGORIES, DIFFICULTY_BANDS, VOCAB_EARNING_RATES, VOCAB_MASTERY
   types/          database types
-stores/           Zustand stores
+stores/           Zustand stores (session-store, vocab-store)
 supabase/migrations/   numbered SQL migrations
 ```
 
@@ -117,6 +122,67 @@ Single-pass review (not full SM-2):
 - `QuestionCard` has defensive rendering for the meta-prompt bug via `isMetaPromptPassage()` from `lib/sanitize.ts` (see below).
 - `QuestionStopwatch` **freezes at submit** (`stopAt` prop, set from the same timestamp used for `timeSpentSeconds`). Server round-trip is not thinking time, and a clock that keeps running past submit reads as the app charging you for its own latency.
 
+## Vocabulary mode
+
+Sentence-completion drilling over a fixed curated word list. `/vocab` for the student, "Vocabulary Bank" in parent Settings to build the content.
+
+### The split that makes this work
+
+The word list is **code**; the sentences are **data**.
+
+- `lib/vocab/word-list.ts` — ~335 words with part of speech, definition, tier (1-3), and a coarse `sense` cluster. In the repo, not the DB, so mastery has a stable denominator ("112 of 335") and the list is reviewable in version control.
+- `vocab_items` (Postgres) — Gemini-authored sentences, several variants per word, so a re-drilled word appears in fresh context rather than a remembered sentence.
+
+Gemini writes **only the sentence and one note per wrong choice**. The word, definition, all four choices, and which one is correct are decided in code before the prompt is built. That's why vocabulary needs nothing like the three-layer meta-prompt defense the passage pipeline needs — the model has no opportunity to mislabel an answer or invent a definition.
+
+### Distractors — `lib/vocab/distractors.ts`
+
+Wrong answers are real words from the same list, under two constraints that exist because breaking either yields an item with no defensible answer:
+
+1. **Same part of speech.** Otherwise grammar alone solves it.
+2. **Different `sense` tag.** This is what stops "obdurate" being offered against "intransigent". When adding words to the list, **tag any near-synonym** — an untagged synonym pair is the one way to produce an unanswerable item.
+
+Tier proximity is a preference, not a constraint (the noun pool is too small to guarantee it). Selection is seeded by `(word, variantIndex)`, so regenerating a variant reselects the same distractors and generation stays idempotent.
+
+`unsuitable_distractors` in the model's response is a third guard: `sense` is coarse, and only the model can see the sentence it just wrote. Flagged items are **discarded, not repaired**.
+
+### Selection — `lib/vocab/select.ts`
+
+Single source of truth, same convention as `question-selector.ts`. `/api/vocab/next` delegates and only handles the generation fallback.
+
+Cascade: due reviews → new words (under the in-flight cap) → pulled-forward reviews → new-word overflow → mastered refreshers → anything at all.
+
+- **`IN_FLIGHT_LIMIT = 20`** caps how many words are being learned at once. Without it the selector introduces a new word every rep — a week of practice meets 200 words once each and learns none.
+- **Steps 3-5 exclude words already answered today.** This is load-bearing, not politeness: mastery is 3 consecutive correct, so without it a student at the cap gets the same word three times in ten minutes and "masters" it on short-term recall alone. The final step drops the filter so a long session never dead-ends.
+
+### Mastery & spacing — `lib/vocab/mastery.ts`
+
+Scheduled by **word**, not by item (unlike `spaced_repetition`, which is per question id) — the unit being learned is the word; the sentence is disposable.
+
+- 3 consecutive correct → mastered, unscheduled, frees an in-flight slot.
+- Any miss → streak resets, un-masters, back tomorrow.
+- Intervals (1/3/7 days) are scaled by an ease factor that moves ±0.1/0.2 per answer, so a word that keeps causing trouble returns sooner than one that doesn't.
+
+Note this differs from the question flow deliberately: questions delete the SR row on the *first* correct review. One correct answer among four choices isn't evidence a word is learned.
+
+### Earning & reporting
+
+- **0.1 min per correct rep** (`VOCAB_EARNING_RATES`), against the **same** weekly cap and the same `time_balances` table — one pool of gaming time, not two. The rate is low on purpose: a vocab rep is seconds where a passage question is a minute, so equal pay would make vocabulary the cheapest route to the cap and passage practice would stop.
+- `sessions.mode` (`'practice' | 'vocab'`) keeps the two apart. Vocab reps **do** increment `sessions.total_questions` — that's what makes `/api/sessions/end` credit the streak — so anything reporting passage accuracy must filter `mode = 'practice'`, as the student dashboard does. Averaging a 90%-accurate vocab session into passage accuracy hides the weakness the dashboard exists to surface.
+- Vocabulary deliberately **does not touch `student_stats` / Elo**. That Elo targets College Board questions by difficulty band; feeding single-word items into it would mis-target passage practice.
+
+### Building the bank
+
+`/api/vocab/generate` is background-only — never between Submit and feedback (same rule as `/api/sessions/answer`). Two callers: the parent Settings button, which loops one request per chunk because a single invocation is capped at 60s; and the vocab page, which builds the exact words the selector wanted when it comes up empty, then retries.
+
+`targetPerWord` is a **pass number**, not a batch size. Pass 1 gives every word one sentence (enough to drill the whole list); passes 2-3 add the variants that prevent repeats. Pass 1 alone is a usable state — the student page tops up in the background as it goes.
+
+### Gotchas
+
+- **`BLANK` lives in `lib/vocab/blank.ts`, not `schema.ts`.** Client components need it, and importing from `schema.ts` drags zod into the browser bundle — that alone took `/vocab` from 4.8 kB to 30.5 kB. Keep `blank.ts` import-free.
+- **Vocabulary has no `choiceMap`.** Items are shuffled once at generation time and stored that way, never re-shuffled at serve time, so displayed labels always equal stored labels. Don't add the translation layer the passage flow needs.
+- **Sentences are plain text**, rendered without `dangerouslySetInnerHTML`. If they ever carry markup, route them through `lib/sanitize.ts` like `QuestionCard` does.
+
 ## Known issue: meta-prompt passages
 
 Gemini occasionally fills `passage_text` with a meta-description ("The author of this passage wants to...") instead of actual passage prose, producing unanswerable questions with no source text. **Defense is layered in three places — keep them in sync if patterns change**:
@@ -146,3 +212,5 @@ Patterns matched: `the author of (this|the) passage`, `the (writer|author|speake
 - The `app/api/questions/generate` route uses the **admin client** — it must remain auth-gated (currently checks `supabase.auth.getUser()`).
 - `ON DELETE CASCADE` is set on `student_questions.question_id`, so deleting from `questions` cleans up dependent rows automatically.
 - DSAT categories are a closed set in `lib/constants.ts` — don't introduce new ones without updating prompts, the selector, and any UI that lists categories.
+- `/api/sessions/start` now reads a `{ mode }` body. The practice page posts no body at all, so the body parse must stay fault-tolerant (`.catch(() => ({}))`) or passage practice breaks.
+- Adding a word to `lib/vocab/word-list.ts` requires a `sense` tag if it shares a meaning with anything already on the list. See the Vocabulary section above.

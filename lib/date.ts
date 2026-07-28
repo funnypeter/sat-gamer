@@ -35,12 +35,20 @@ export function dateInAppTimezone(d: Date): string {
 
 /** Return yesterday's date (relative to `todayStr`) as YYYY-MM-DD. */
 export function yesterdayOf(todayStr: string): string {
-  // Parse as UTC midnight, subtract a day, format. Safe because we only
-  // care about the date string — no timezone math needed once we're in
-  // YYYY-MM-DD land.
-  const [y, m, d] = todayStr.split("-").map(Number);
+  return addDays(todayStr, -1);
+}
+
+/**
+ * Shift a YYYY-MM-DD date string by `n` days.
+ *
+ * Safe because we only care about the date string — parsing as UTC midnight
+ * and adding whole days can't drift across a DST boundary the way adding
+ * milliseconds to a timestamp can.
+ */
+export function addDays(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
   const t = new Date(Date.UTC(y, m - 1, d));
-  t.setUTCDate(t.getUTCDate() - 1);
+  t.setUTCDate(t.getUTCDate() + n);
   return t.toISOString().split("T")[0];
 }
 

@@ -78,6 +78,20 @@ export async function POST(request: Request) {
       .delete()
       .eq("student_id", studentId);
 
+    // Vocabulary progress. vocab_attempts cascades from the sessions delete
+    // above (session_id FK), but vocab_mastery hangs off the user, not a
+    // session, so it survives a reset unless deleted explicitly — leaving a
+    // "reset" student still showing 100 mastered words.
+    await adminClient
+      .from("vocab_mastery")
+      .delete()
+      .eq("student_id", studentId);
+
+    await adminClient
+      .from("vocab_attempts")
+      .delete()
+      .eq("student_id", studentId);
+
     // Reset all student_stats to defaults
     await adminClient
       .from("student_stats")

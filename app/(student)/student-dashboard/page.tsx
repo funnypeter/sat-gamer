@@ -5,6 +5,7 @@ import Link from "next/link";
 import CategoryBreakdown from "@/components/student/CategoryBreakdown";
 import { effectiveStreak } from "@/lib/engine/streak";
 import { formatMinutes } from "@/lib/constants";
+import { VOCAB_TOTAL } from "@/lib/vocab/word-list";
 
 export default async function StudentDashboard() {
   const supabase = createClient();
@@ -50,11 +51,43 @@ export default async function StudentDashboard() {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
+  // Passage-practice sessions only. Vocabulary reps are counted separately
+  // below — a 90%-accurate vocab session averaged into passage accuracy hides
+  // exactly the weakness this dashboard exists to surface.
   const { data: todaySessions } = await admin
     .from("sessions")
     .select("total_questions, correct_count, minutes_earned")
     .eq("student_id", user.id)
+    .eq("mode", "practice")
     .gte("started_at", todayStart.toISOString());
+
+  const [{ data: vocabToday }, { data: vocabMastery }, { data: vocabMinutes }] =
+    await Promise.all([
+      admin
+        .from("vocab_attempts")
+        .select("is_correct")
+        .eq("student_id", user.id)
+        .gte("answered_at", todayStart.toISOString()),
+      admin.from("vocab_mastery").select("mastered").eq("student_id", user.id),
+      admin
+        .from("sessions")
+        .select("minutes_earned")
+        .eq("student_id", user.id)
+        .eq("mode", "vocab")
+        .gte("started_at", todayStart.toISOString()),
+    ]);
+
+  const vocabTodayCount = vocabToday?.length ?? 0;
+  const vocabTodayCorrect =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vocabToday?.filter((a: any) => a.is_correct).length ?? 0;
+  const vocabMasteredCount =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vocabMastery?.filter((m: any) => m.mastered).length ?? 0;
+  const vocabSeenCount = vocabMastery?.length ?? 0;
+  const vocabMinutesToday =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vocabMinutes?.reduce((sum: number, s: any) => sum + Number(s.minutes_earned), 0) ?? 0;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const todayQuestions = todaySessions?.reduce((sum: number, s: any) => sum + s.total_questions, 0) ?? 0;
@@ -124,6 +157,12 @@ export default async function StudentDashboard() {
             Redeem Time
           </Link>
         </div>
+        <Link
+          href="/vocab"
+          className="mt-3 block rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-center text-sm font-semibold text-purple-300 transition-colors hover:bg-purple-500/20"
+        >
+          Drill Vocabulary
+        </Link>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -175,10 +214,43 @@ export default async function StudentDashboard() {
             <span className="stat-label">Accuracy</span>
           </div>
           <div className="stat-card text-center">
-            <span className="stat-value text-accent-blue">{formatMinutes(todayMinutes)}</span>
+            <span className="stat-value text-accent-blue">
+              {formatMinutes(todayMinutes + vocabMinutesToday)}
+            </span>
             <span className="stat-label">Min Earned</span>
           </div>
         </div>
+      </div>
+
+      {/* Vocabulary — mastery against the fixed word list. Kept out of the
+          Questions/Accuracy tiles above because vocab reps and passage
+          questions aren't the same unit of work. */}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-400">Vocabulary</h3>
+        <Link href="/vocab" className="block card-glass p-4 transition-colors hover:bg-white/[0.07]">
+          <div className="flex items-baseline justify-between">
+            <p className="text-xl font-bold text-white">
+              {vocabMasteredCount}
+              <span className="text-sm font-medium text-gray-400"> / {VOCAB_TOTAL} mastered</span>
+            </p>
+            {vocabTodayCount > 0 && (
+              <p className="text-xs text-gray-400">
+                {vocabTodayCorrect}/{vocabTodayCount} today
+              </p>
+            )}
+          </div>
+          <div className="mt-2 h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent-gold rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, (vocabMasteredCount / VOCAB_TOTAL) * 100)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-[11px] text-gray-500">
+            {vocabSeenCount - vocabMasteredCount > 0
+              ? `${vocabSeenCount - vocabMasteredCount} words in progress`
+              : "Tap to start drilling"}
+          </p>
+        </Link>
       </div>
 
       {/* Category Breakdown — collapsed by default */}

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const supabase = createClient();
     const {
@@ -14,6 +14,11 @@ export async function POST() {
     }
 
     const admin = createAdminClient();
+
+    // The practice page posts no body at all, so an empty/invalid body must
+    // fall back to the default mode rather than throwing.
+    const body = await request.json().catch(() => ({}));
+    const mode = (body as { mode?: string }).mode === "vocab" ? "vocab" : "practice";
 
     // Abandon any active sessions
     const { data: activeSessions } = await admin
@@ -51,6 +56,7 @@ export async function POST() {
         minutes_earned: 0,
         block_seconds: 0,
         status: "active",
+        mode,
       })
       .select()
       .single();

@@ -71,6 +71,7 @@ export default async function StudentLayout({
         <div className="mx-auto flex max-w-md items-center justify-around py-2">
           <NavItem href="/student-dashboard" label="Home" icon="home" />
           <NavItem href="/practice" label="Practice" icon="play" />
+          <NavItem href="/vocab" label="Vocab" icon="letters" />
           <NavItem href="/review" label="Review" icon="book" />
           <NavItem href="/leaderboard" label="Board" icon="trophy" />
         </div>
@@ -85,10 +86,13 @@ function NavItem({ href, label, icon }: { href: string; label: string; icon: str
     play: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
     book: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>,
     trophy: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3h14a1 1 0 011 1v2a5 5 0 01-5 5h-1v4h3l1 4H6l1-4h3v-4H9a5 5 0 01-5-5V4a1 1 0 011-1z" /></svg>,
+    letters: <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17l4.5-11L13 17M6 13.5h5M16 10.5c.7-.7 1.6-1 2.5-1 1.4 0 2.5.9 2.5 2.5V17m0-3.5c-3 0-4.5.6-4.5 2s1 1.8 2 1.8c1.2 0 2.5-.8 2.5-2.3" /></svg>,
   };
 
+  // Five tabs at this width leaves the labels tight but readable; px-3 would
+  // overflow on a small phone, so the padding shrinks with the extra item.
   return (
-    <Link href={href} className="flex flex-col items-center gap-0.5 px-3 py-1 text-gray-400 transition-colors hover:text-accent-blue">
+    <Link href={href} className="flex flex-col items-center gap-0.5 px-2 py-1 text-gray-400 transition-colors hover:text-accent-blue">
       {icons[icon]}
       <span className="text-[10px] font-medium">{label}</span>
     </Link>
