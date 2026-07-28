@@ -15,7 +15,9 @@ import { addDays, todayInAppTimezone } from "@/lib/date";
  * correct review, on the reasoning that re-proving a specific question is
  * low value. A word answered right once is not learned — it's likely a lucky
  * elimination among four choices. It takes `consecutiveCorrectToMaster`
- * correct answers at widening intervals before the word is retired.
+ * correct answers at widening intervals before the word counts as mastered,
+ * and even then it stays on a long refresher schedule rather than dropping
+ * out of the rotation for good.
  */
 
 export interface MasteryState {
@@ -80,16 +82,33 @@ export function nextMastery(
   const ease_factor = clamp(prev.ease_factor + 0.1, MIN_EASE, MAX_EASE);
 
   if (consecutive_correct >= VOCAB_MASTERY.consecutiveCorrectToMaster) {
-    // Learned. Drops out of the rotation entirely — no next_review_date — so
-    // it stops consuming a slot in the in-flight queue and new words can be
-    // introduced in its place.
+    // Learned — but not retired. The word leaves the active learning queue
+    // (the in-flight cap counts unmastered words only, so new words keep
+    // flowing in its place) and moves onto a long refresher schedule: three
+    // weeks, then six, then three months, widening each time it survives.
+    //
+    // Retiring outright was the previous behaviour and it quietly lost words:
+    // three correct answers inside a fortnight proves recent recall, not
+    // durable memory, and a word never shown again after that is a word the
+    // student can forget without the app ever noticing. A missed refresher
+    // un-masters the word and drops it straight back to the 1/3/7 schedule.
+    //
+    // Ease deliberately does not scale these. At three weeks and up, a ±0.2
+    // ease nudge is noise next to the interval itself.
+    const masteredStage = Math.min(
+      consecutive_correct - VOCAB_MASTERY.consecutiveCorrectToMaster,
+      VOCAB_MASTERY.masteredReviewIntervalDays.length - 1
+    );
+    const interval_days =
+      VOCAB_MASTERY.masteredReviewIntervalDays[masteredStage];
+
     return {
       times_seen,
       times_correct,
       consecutive_correct,
       mastered: true,
-      next_review_date: null,
-      interval_days: prev.interval_days,
+      next_review_date: addDays(today, interval_days),
+      interval_days,
       ease_factor,
     };
   }

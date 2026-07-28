@@ -154,18 +154,21 @@ Tier proximity is a preference, not a constraint (the noun pool is too small to 
 
 Single source of truth, same convention as `question-selector.ts`. `/api/vocab/next` delegates and only handles the generation fallback.
 
-Cascade: due reviews → new words (under the in-flight cap) → pulled-forward reviews → new-word overflow → mastered refreshers → anything at all.
+Cascade: due reviews → **due mastered refreshers** → new words (under the in-flight cap) → pulled-forward reviews → new-word overflow → any mastered refresher → anything at all.
 
 - **`IN_FLIGHT_LIMIT = 20`** caps how many words are being learned at once. Without it the selector introduces a new word every rep — a week of practice meets 200 words once each and learns none.
-- **Steps 3-5 exclude words already answered today.** This is load-bearing, not politeness: mastery is 3 consecutive correct, so without it a student at the cap gets the same word three times in ten minutes and "masters" it on short-term recall alone. The final step drops the filter so a long session never dead-ends.
+- **Due refreshers sit above new words** (step 2). Below them they would never fire — unseen words outnumber due refreshers for months. They can't crowd out new material either: a mastered word can't come due more than once every three weeks.
+- **Steps 4-6 exclude words already answered today.** This is load-bearing, not politeness: mastery is 3 consecutive correct, so without it a student at the cap gets the same word three times in ten minutes and "masters" it on short-term recall alone. The final step drops the filter so a long session never dead-ends.
 
 ### Mastery & spacing — `lib/vocab/mastery.ts`
 
 Scheduled by **word**, not by item (unlike `spaced_repetition`, which is per question id) — the unit being learned is the word; the sentence is disposable.
 
-- 3 consecutive correct → mastered, unscheduled, frees an in-flight slot.
-- Any miss → streak resets, un-masters, back tomorrow.
-- Intervals (1/3/7 days) are scaled by an ease factor that moves ±0.1/0.2 per answer, so a word that keeps causing trouble returns sooner than one that doesn't.
+- 3 consecutive correct → mastered. Frees an in-flight slot (the cap counts unmastered words only) but **does not retire the word** — it moves to a long refresher schedule of 21 / 45 / 90 days, widening each time it's re-proved.
+- Any miss, including on a refresher → streak resets, un-masters, back tomorrow on the 1/3/7 schedule.
+- Learning intervals (1/3/7 days) are scaled by an ease factor that moves ±0.1/0.2 per answer, so a word that keeps causing trouble returns sooner than one that doesn't. Mastered intervals are **not** ease-scaled — at three weeks and up the nudge is noise.
+
+Mastered words were originally retired outright (`next_review_date = null`, surfaced only once the whole list was exhausted, i.e. never). Three correct answers inside a fortnight proves recent recall, not durable memory, so learned words now recur — rarely. Migration `008` backfills rows mastered under the old rule, spreading their due dates across three weeks so a cohort doesn't all land in one session.
 
 Note this differs from the question flow deliberately: questions delete the SR row on the *first* correct review. One correct answer among four choices isn't evidence a word is learned.
 

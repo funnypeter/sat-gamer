@@ -40,12 +40,19 @@ export const VOCAB_EARNING_RATES = {
 
 export const VOCAB_MASTERY = {
   // Consecutive correct answers (across separate sessions/days, since reviews
-  // are scheduled a day out at minimum) before a word is considered learned
-  // and retired from the rotation.
+  // are scheduled a day out at minimum) before a word is counted as learned
+  // and leaves the active learning queue.
   consecutiveCorrectToMaster: 3,
-  // Review spacing after each correct answer, indexed by consecutive_correct.
-  // Past the end of the array the word is mastered and no longer scheduled.
+  // Review spacing while a word is still being learned, indexed by
+  // consecutive_correct.
   reviewIntervalDays: [1, 3, 7] as readonly number[],
+  // Spacing *after* a word is mastered, indexed by how many times it has been
+  // re-proved since. Learned words aren't retired outright — a word answered
+  // right three times in a fortnight and then never seen again quietly decays.
+  // These are deliberately long so refreshers stay a small fraction of a
+  // session; a miss un-masters the word and drops it back to the schedule
+  // above. Past the end of the array the last interval repeats.
+  masteredReviewIntervalDays: [21, 45, 90] as readonly number[],
   // How many distinct generated sentences to keep on hand per word. Below
   // this, background generation tops the word up.
   itemsPerWordTarget: 3,

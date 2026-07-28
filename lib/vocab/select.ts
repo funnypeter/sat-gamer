@@ -57,18 +57,26 @@ export interface VocabSelection {
  * Cascade (first match wins, then falls through to the next word if that
  * word has no generated item available):
  *   1. `review`       — due today or overdue, not yet mastered.
- *   2. `new`          — an unseen word from the lowest tier that still has
+ *   2. `refresher`    — mastered words whose long refresher has come due.
+ *   3. `new`          — an unseen word from the lowest tier that still has
  *                       one, while under the in-flight cap.
- *   3. `early-review` — at the cap with nothing due: the least recently seen
+ *   4. `early-review` — at the cap with nothing due: the least recently seen
  *                       unmastered word, pulled forward. Excludes anything
  *                       already answered today.
- *   4. `new` overflow — still nothing: introduce unseen words past the cap
+ *   5. `new` overflow — still nothing: introduce unseen words past the cap
  *                       rather than re-drill today's.
- *   5. `refresher`    — mastered words, oldest first, not seen today.
- *   6. anything left, including words already seen today. Last resort so a
+ *   6. `refresher`    — mastered words, oldest first, not seen today, whether
+ *                       or not they're due.
+ *   7. anything left, including words already seen today. Last resort so a
  *                       long session never dead-ends on "nothing to do".
  *
- * Steps 3-5 all exclude words answered earlier the same day, and that
+ * Step 2 is what makes learned words recur. It sits above new words on
+ * purpose: below them it would never fire, since unseen words outnumber due
+ * refreshers for months. It can't crowd out new material either — a mastered
+ * word is only due once every three weeks at minimum, so refreshers stay a
+ * thin slice of any session.
+ *
+ * Steps 4-6 all exclude words answered earlier the same day, and that
  * exclusion is the whole reason mastery can't be farmed in one sitting.
  * `consecutiveCorrectToMaster` is 3, and without the same-day filter a
  * student sitting at the in-flight cap would be served the same word three
@@ -103,7 +111,23 @@ export function orderCandidateWords(
     .sort((a, b) => (a.next_review_date! < b.next_review_date! ? -1 : 1))
     .forEach((m) => push(getVocabWord(m.word), "review"));
 
-  // 2. New words, lowest tier first, while under the cap.
+  // 2. Mastered words whose refresher has come due, most overdue first. These
+  //    sit ahead of new words because they are scarce by construction — a
+  //    mastered word can't come due more than once every three weeks — and
+  //    behind due reviews because a word still being learned is the more
+  //    urgent of the two.
+  mastery
+    .filter(
+      (m) =>
+        m.mastered &&
+        m.next_review_date !== null &&
+        m.next_review_date <= today &&
+        !seenToday(m)
+    )
+    .sort((a, b) => (a.next_review_date! < b.next_review_date! ? -1 : 1))
+    .forEach((m) => push(getVocabWord(m.word), "refresher"));
+
+  // 3. New words, lowest tier first, while under the cap.
   const unseen = VOCAB_WORDS.filter((w) => !seen.has(w.word)).sort(
     (a, b) => a.tier - b.tier
   );
@@ -113,23 +137,23 @@ export function orderCandidateWords(
       .forEach((w) => push(w, "new"));
   }
 
-  // 3. Pulled-forward reviews, but not words already answered today.
+  // 4. Pulled-forward reviews, but not words already answered today.
   unmastered
     .filter((m) => !seenToday(m))
     .sort(oldestFirst)
     .forEach((m) => push(getVocabWord(m.word), "early-review"));
 
-  // 4. Overflow past the cap: meeting a new word beats re-drilling one from
+  // 5. Overflow past the cap: meeting a new word beats re-drilling one from
   //    an hour ago.
   unseen.forEach((w) => push(w, "new"));
 
-  // 5. Mastered words as refreshers, oldest first, not seen today.
+  // 6. Mastered words as refreshers, oldest first, not seen today.
   mastery
     .filter((m) => m.mastered && !seenToday(m))
     .sort(oldestFirst)
     .forEach((m) => push(getVocabWord(m.word), "refresher"));
 
-  // 6. Everything else, same-day repeats included. Only reached when the
+  // 7. Everything else, same-day repeats included. Only reached when the
   //    entire list has been touched today.
   mastery
     .slice()
