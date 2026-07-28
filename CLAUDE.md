@@ -205,7 +205,7 @@ Patterns matched: `the author of (this|the) passage`, `the (writer|author|speake
 - **HTML in passages**: `<u>` marks "underlined portions" referenced by questions (Standard English Conventions, Text Structure & Purpose). CB also wraps prose paragraphs in `<p>`. The shared sanitizer in `lib/sanitize.ts` is the single source of truth for the allowlist — every component that renders question HTML should import `sanitizeHtml` from there, never define its own.
 - **Two Supabase clients**: `lib/supabase/server.ts` for user-scoped (RLS-enforced) reads; `lib/supabase/admin.ts` for service-role inserts (used by `/api/questions/generate`, import-cb, and seed routes). Never use the admin client in user-facing reads.
 - **Migrations are numbered** (`001_`, `002_`, ...). Create new ones; never edit applied ones.
-- **Supabase migrations don't auto-deploy with Vercel** — run `supabase db push` (or paste SQL into the Supabase dashboard) yourself after merging.
+- **Supabase migrations don't auto-deploy with Vercel.** Apply each new migration to the project (`pwyzlwpxevdnxktddfwl`) as part of the same task that writes it — via the Supabase MCP tools, `supabase db push`, or the dashboard. Don't hand the SQL back to the user to run. Numbered files in `supabase/migrations/` stay the source of truth; the remote's applied list (`list_migrations`) only goes back to `004` because `001`-`003` predate migration tracking.
 - **The route at `/api/questions/next` must not duplicate selection logic** — it delegates to `selectNextQuestion()` and only handles Gemini fallback. If you need to change selection priority, change the selector, not the route.
 
 ## Scripts
