@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { BLANK } from "@/lib/vocab/blank";
+import AskGeminiChat from "./AskGeminiChat";
 
 export interface VocabMasteryResult {
   consecutiveCorrect: number;
@@ -11,6 +13,7 @@ export interface VocabMasteryResult {
 }
 
 interface VocabFeedbackProps {
+  itemId: string;
   word: string;
   definition: string;
   sentence: string;
@@ -26,14 +29,16 @@ interface VocabFeedbackProps {
 /**
  * Post-answer screen for a vocabulary rep.
  *
- * Deliberately lighter than `FeedbackOverlay`: no "Ask Gemini" chat. The
- * tutor exists because a College Board rationale about a 400-word passage can
- * fail to land and there's genuinely more to say. A four-choice word item has
- * a definition and one line per wrong choice — that *is* the whole
- * explanation, and an AI round-trip on top of it would add several seconds to
- * a rep that should take fifteen.
+ * Carries the same "Ask Gemini" tutor as `FeedbackOverlay`, pointed at
+ * `/api/vocab/explain`. The definition plus a one-line note per wrong choice
+ * covers the common case, but "why doesn't *this* word fit?" and "how do I
+ * remember this?" are exactly the questions a static gloss can't answer — and
+ * a word you can't yet feel the shape of needs a second angle more than a
+ * comprehension question does. The chat is opt-in, so it costs nothing on the
+ * reps where the student just taps Next.
  */
 export default function VocabFeedback({
+  itemId,
   word,
   definition,
   sentence,
@@ -45,7 +50,27 @@ export default function VocabFeedback({
   mastery,
   onNext,
 }: VocabFeedbackProps) {
+  const [chatOpen, setChatOpen] = useState(false);
   const completed = sentence.replace(BLANK, word);
+
+  const chosenWord = choices.find((c) => c.label === selectedAnswer)?.text;
+
+  // Tailor the quick-prompts to what actually happened. On a miss, the most
+  // useful question is almost always the contrast between the word they
+  // picked and the right one, so offer it with both words named.
+  const chatSuggestions = isCorrect
+    ? [
+        `How would I use "${word}" myself?`,
+        "Why don't the other words fit?",
+        `What's a good way to remember "${word}"?`,
+      ]
+    : [
+        chosenWord && chosenWord !== word
+          ? `What's the difference between "${chosenWord}" and "${word}"?`
+          : "Why is my answer wrong?",
+        `Can you explain "${word}" a different way?`,
+        `What's a good way to remember "${word}"?`,
+      ];
 
   return (
     <div className="space-y-4 animate-slide-up">
@@ -157,9 +182,32 @@ export default function VocabFeedback({
         })}
       </div>
 
+      {/* Available whether they got it right or wrong — "how do I actually use
+          this word?" is worth asking after a correct guess too. */}
+      <button
+        type="button"
+        onClick={() => setChatOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-2 text-sm font-semibold text-accent-blue transition-colors hover:bg-accent-blue/20"
+      >
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1z" />
+        </svg>
+        Ask Gemini for help
+      </button>
+
       <button onClick={onNext} className="btn-primary w-full">
         Next Word
       </button>
+
+      {chatOpen && (
+        <AskGeminiChat
+          endpoint="/api/vocab/explain"
+          payload={{ itemId }}
+          subtitle={`AI tutor · ${word}`}
+          suggestions={chatSuggestions}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </div>
   );
 }

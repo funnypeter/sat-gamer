@@ -300,6 +300,7 @@ export default function VocabPage() {
 
       {showFeedback && lastResult && currentItem && (
         <VocabFeedback
+          itemId={currentItem.id}
           word={lastResult.word}
           definition={lastResult.definition}
           sentence={currentItem.sentence}

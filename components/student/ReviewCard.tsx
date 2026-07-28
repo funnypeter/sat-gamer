@@ -118,7 +118,7 @@ export default function ReviewCard({
       </button>
 
       {chatOpen && (
-        <AskGeminiChat questionId={questionId} onClose={() => setChatOpen(false)} />
+        <AskGeminiChat payload={{ questionId }} onClose={() => setChatOpen(false)} />
       )}
     </div>
   );

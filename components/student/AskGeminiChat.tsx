@@ -7,16 +7,29 @@ interface ChatMessage {
   text: string;
 }
 
+/**
+ * The tutor chat, shared by passage questions and vocabulary.
+ *
+ * The transport, streaming, and chrome are identical for both; only the
+ * endpoint and the identifying payload differ. Rather than fork the component
+ * (and then have to fix streaming bugs twice), the caller supplies both:
+ *
+ *   passage questions → /api/questions/explain  { questionId, choiceMap }
+ *   vocabulary        → /api/vocab/explain      { itemId }
+ *
+ * `payload` is spread alongside `messages` into the request body, so adding a
+ * third content type means a new route and a new payload shape, not a change
+ * here.
+ */
 interface AskGeminiChatProps {
-  questionId: string;
+  /** Route that streams the reply back as plain text. */
+  endpoint?: string;
+  /** Identifying fields for the thing being discussed; merged into the body. */
+  payload: Record<string, unknown>;
+  /** Small line under the "Ask Gemini" header. */
+  subtitle?: string;
   /** Shown as quick-start prompts the student can tap. */
   suggestions?: string[];
-  /**
-   * Displayed label -> original label, for shuffled servings. Without it the
-   * tutor reasons about the question's stored letters while the student is
-   * asking about the letters on their screen.
-   */
-  choiceMap?: Record<string, string> | null;
   onClose: () => void;
 }
 
@@ -27,9 +40,10 @@ const DEFAULT_SUGGESTIONS = [
 ];
 
 export default function AskGeminiChat({
-  questionId,
+  endpoint = "/api/questions/explain",
+  payload,
+  subtitle = "AI tutor · this question",
   suggestions = DEFAULT_SUGGESTIONS,
-  choiceMap = null,
   onClose,
 }: AskGeminiChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -65,10 +79,10 @@ export default function AskGeminiChat({
     setLoading(true);
 
     try {
-      const res = await fetch("/api/questions/explain", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId, messages: next, choiceMap }),
+        body: JSON.stringify({ ...payload, messages: next }),
       });
 
       if (!res.ok || !res.body) {
@@ -135,7 +149,7 @@ export default function AskGeminiChat({
             </span>
             <div>
               <p className="text-sm font-semibold text-white">Ask Gemini</p>
-              <p className="text-[10px] text-gray-500">AI tutor · this question</p>
+              <p className="text-[10px] text-gray-500">{subtitle}</p>
             </div>
           </div>
           <button

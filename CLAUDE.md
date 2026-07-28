@@ -21,8 +21,8 @@ app/
   (student)/      student dashboard, practice, vocab, review, leaderboard, profile, redeem
   (parent)/       parent-side views
   api/
-    questions/    generate, next, prefetch, seed, import-cb, stats
-    vocab/        next, answer, generate
+    questions/    generate, next, prefetch, seed, import-cb, stats, explain
+    vocab/        next, answer, generate, explain
     sessions/     practice session lifecycle (shared by both modes)
     students/     student CRUD for parents
     auth/  avatar/  redeem/  debug/
@@ -86,9 +86,13 @@ The cascade itself never re-serves answered questions — steps 2-6 filter to ne
 
 CB-first means a student is always served authentic CB content when an Elo-appropriate one exists, before any AI-generated content. The `cbOnly` filter inside `findUnseen()` is the mechanism — it adds an `or("generated_by.eq.collegeboard,generated_by.eq.collegeboard-classified")` to the query.
 
-### AI tutor — `app/api/questions/explain/route.ts`
+### AI tutor — `app/api/questions/explain/route.ts` and `app/api/vocab/explain/route.ts`
 
-The "Ask Gemini" chat, opened from `FeedbackOverlay` (practice) and `ReviewCard` (review).
+The "Ask Gemini" chat, opened from `FeedbackOverlay` (practice), `ReviewCard` (review), and `VocabFeedback` (vocabulary).
+
+**One component, two routes.** `AskGeminiChat` owns the transport, streaming, and chrome for both; the caller passes `endpoint` and a `payload` that gets spread into the request body (`{ questionId, choiceMap }` for passages, `{ itemId }` for vocabulary). Don't fork the component to add a content type — add a route and a payload shape, or streaming bugs have to be fixed twice.
+
+The two routes share the streaming and thinking-disabled decisions below, and differ only in grounding and brief. The vocabulary brief's central rule is the direct analogue of the passage one: **never just restate the definition.** The student saw the definition and the per-choice notes on the feedback screen and opened the chat anyway, so the gloss is the thing that already failed. It's told to teach the word another way — the situations it shows up in, what it's the opposite of, a concrete hook — and to contrast words directly when asked "why not this one?".
 
 - **Replies stream.** The route returns a `ReadableStream` of plain text from `sendMessageStream`; the client reads `res.body` and appends chunks as they arrive. Don't revert it to a JSON `{ reply }` payload — the wait is several seconds and a spinner reads as a hang.
 - **Thinking is disabled** (`generationConfig.thinkingConfig.thinkingBudget: 0`). 2.5 Flash spends output tokens on internal thinking before it writes anything, so a small `maxOutputTokens` gets consumed by reasoning and the visible reply stops mid-sentence. `thinkingConfig` isn't in the 0.x SDK's types so it's cast; if the endpoint ever rejects it, the route retries once without it and with a much larger token budget.
@@ -180,7 +184,7 @@ Note this differs from the question flow deliberately: questions delete the SR r
 ### Gotchas
 
 - **`BLANK` lives in `lib/vocab/blank.ts`, not `schema.ts`.** Client components need it, and importing from `schema.ts` drags zod into the browser bundle — that alone took `/vocab` from 4.8 kB to 30.5 kB. Keep `blank.ts` import-free.
-- **Vocabulary has no `choiceMap`.** Items are shuffled once at generation time and stored that way, never re-shuffled at serve time, so displayed labels always equal stored labels. Don't add the translation layer the passage flow needs.
+- **Vocabulary has no `choiceMap`.** Items are shuffled once at generation time and stored that way, never re-shuffled at serve time, so displayed labels always equal stored labels. Don't add the translation layer the passage flow needs — and note `/api/vocab/explain` therefore takes no `choiceMap` either.
 - **Sentences are plain text**, rendered without `dangerouslySetInnerHTML`. If they ever carry markup, route them through `lib/sanitize.ts` like `QuestionCard` does.
 
 ## Known issue: meta-prompt passages

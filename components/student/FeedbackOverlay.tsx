@@ -172,9 +172,8 @@ export default function FeedbackOverlay({
 
       {chatOpen && (
         <AskGeminiChat
-          questionId={questionId}
+          payload={{ questionId, choiceMap }}
           suggestions={chatSuggestions}
-          choiceMap={choiceMap}
           onClose={() => setChatOpen(false)}
         />
       )}
