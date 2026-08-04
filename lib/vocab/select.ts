@@ -43,6 +43,28 @@ export interface VocabItemRow {
 
 export type SelectionReason = "review" | "new" | "early-review" | "refresher";
 
+/**
+ * Fisher-Yates copy. Every list this module orders gets shuffled before
+ * it is sorted, so words that tie on the sort key (same due date, same
+ * tier, never seen) come out in a different order every call instead of
+ * in word-list order — which is alphabetical.
+ *
+ * Without this a student meets `abase, abate, abdicate, aberrant, ...`
+ * for their first week: the ranking rules are all satisfied by that
+ * order, so nothing else was breaking the tie. Array.prototype.sort is
+ * stable, so shuffling first and sorting after preserves the intended
+ * priority (due before new, low tier before high) and randomizes only
+ * within each band.
+ */
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export interface VocabSelection {
   item: VocabItemRow;
   word: VocabWord;
@@ -76,6 +98,11 @@ export interface VocabSelection {
  * word is only due once every three weeks at minimum, so refreshers stay a
  * thin slice of any session.
  *
+ * Within every step, words that tie on the step's sort key are ordered
+ * randomly (see `shuffled`). The tiers above still hold — due before
+ * new, tier 1 before tier 2 — but a student no longer walks the word
+ * list alphabetically, which is what an unshuffled tie produced.
+ *
  * Steps 4-6 all exclude words answered earlier the same day, and that
  * exclusion is the whole reason mastery can't be farmed in one sitting.
  * `consecutiveCorrectToMaster` is 3, and without the same-day filter a
@@ -102,13 +129,28 @@ export function orderCandidateWords(
     candidates.push({ word: w, reason });
   };
 
-  const oldestFirst = (a: MasteryRow, b: MasteryRow) =>
-    (a.last_seen_at ?? "") < (b.last_seen_at ?? "") ? -1 : 1;
+  // Both comparators return 0 on a tie rather than a constant 1. That
+  // matters now that each list is shuffled first: sort is only stable —
+  // and the shuffle only survives — if equal elements compare equal.
+  const oldestFirst = (a: MasteryRow, b: MasteryRow) => {
+    const x = a.last_seen_at ?? "";
+    const y = b.last_seen_at ?? "";
+    return x < y ? -1 : x > y ? 1 : 0;
+  };
 
-  // 1. Due reviews, most overdue first.
-  unmastered
-    .filter((m) => m.next_review_date !== null && m.next_review_date <= today)
-    .sort((a, b) => (a.next_review_date! < b.next_review_date! ? -1 : 1))
+  const mostOverdueFirst = (a: MasteryRow, b: MasteryRow) => {
+    const x = a.next_review_date!;
+    const y = b.next_review_date!;
+    return x < y ? -1 : x > y ? 1 : 0;
+  };
+
+  // 1. Due reviews, most overdue first, shuffled within a due date.
+  shuffled(
+    unmastered.filter(
+      (m) => m.next_review_date !== null && m.next_review_date <= today
+    )
+  )
+    .sort(mostOverdueFirst)
     .forEach((m) => push(getVocabWord(m.word), "review"));
 
   // 2. Mastered words whose refresher has come due, most overdue first. These
@@ -116,19 +158,22 @@ export function orderCandidateWords(
   //    mastered word can't come due more than once every three weeks — and
   //    behind due reviews because a word still being learned is the more
   //    urgent of the two.
-  mastery
-    .filter(
+  shuffled(
+    mastery.filter(
       (m) =>
         m.mastered &&
         m.next_review_date !== null &&
         m.next_review_date <= today &&
         !seenToday(m)
     )
-    .sort((a, b) => (a.next_review_date! < b.next_review_date! ? -1 : 1))
+  )
+    .sort(mostOverdueFirst)
     .forEach((m) => push(getVocabWord(m.word), "refresher"));
 
-  // 3. New words, lowest tier first, while under the cap.
-  const unseen = VOCAB_WORDS.filter((w) => !seen.has(w.word)).sort(
+  // 3. New words, lowest tier first, in random order within each tier.
+  //    Tier still gates the difficulty ramp; the shuffle is what stops
+  //    the list being walked alphabetically.
+  const unseen = shuffled(VOCAB_WORDS.filter((w) => !seen.has(w.word))).sort(
     (a, b) => a.tier - b.tier
   );
   if (unmastered.length < IN_FLIGHT_LIMIT) {
@@ -138,8 +183,7 @@ export function orderCandidateWords(
   }
 
   // 4. Pulled-forward reviews, but not words already answered today.
-  unmastered
-    .filter((m) => !seenToday(m))
+  shuffled(unmastered.filter((m) => !seenToday(m)))
     .sort(oldestFirst)
     .forEach((m) => push(getVocabWord(m.word), "early-review"));
 
@@ -148,15 +192,13 @@ export function orderCandidateWords(
   unseen.forEach((w) => push(w, "new"));
 
   // 6. Mastered words as refreshers, oldest first, not seen today.
-  mastery
-    .filter((m) => m.mastered && !seenToday(m))
+  shuffled(mastery.filter((m) => m.mastered && !seenToday(m)))
     .sort(oldestFirst)
     .forEach((m) => push(getVocabWord(m.word), "refresher"));
 
   // 7. Everything else, same-day repeats included. Only reached when the
   //    entire list has been touched today.
-  mastery
-    .slice()
+  shuffled(mastery)
     .sort(oldestFirst)
     .forEach((m) =>
       push(getVocabWord(m.word), m.mastered ? "refresher" : "early-review")

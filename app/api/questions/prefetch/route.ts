@@ -4,8 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getGeminiModel } from "@/lib/gemini/client";
 import { GeneratedQuestionsArraySchema } from "@/lib/gemini/schema";
 import { buildQuestionGenerationPrompt } from "@/lib/gemini/prompts";
-import { DSAT_CATEGORIES } from "@/lib/constants";
 import type { DsatCategory } from "@/lib/constants";
+import { pickTargetCategory } from "@/lib/engine/question-selector";
 
 export async function POST() {
   try {
@@ -17,13 +17,10 @@ export async function POST() {
 
     const { data: stats } = await admin.from("student_stats").select("category, elo_rating").eq("student_id", user.id).order("elo_rating", { ascending: true });
 
-    let targetCategory: DsatCategory;
-    if (stats && stats.length > 0 && Math.random() < 0.7) {
-      const weakest = stats.slice(0, 3);
-      targetCategory = weakest[Math.floor(Math.random() * weakest.length)].category as DsatCategory;
-    } else {
-      targetCategory = DSAT_CATEGORIES[Math.floor(Math.random() * DSAT_CATEGORIES.length)];
-    }
+    // Random category, same coverage rule as the selector — prefetching
+    // into the weakest three only would rebuild the bias the selector
+    // dropped, since generated questions are what the pool falls back on.
+    const targetCategory: DsatCategory = pickTargetCategory();
 
     const catStat = stats?.find((s: { category: string }) => s.category === targetCategory);
     const elo = catStat?.elo_rating ?? 500;

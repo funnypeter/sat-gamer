@@ -4,9 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getGeminiModel } from "@/lib/gemini/client";
 import { GeneratedQuestionsArraySchema } from "@/lib/gemini/schema";
 import { buildQuestionGenerationPrompt } from "@/lib/gemini/prompts";
-import { DSAT_CATEGORIES } from "@/lib/constants";
 import type { DsatCategory } from "@/lib/constants";
-import { selectNextQuestion, pickLaggardCategory } from "@/lib/engine/question-selector";
+import { selectNextQuestion, pickTargetCategory } from "@/lib/engine/question-selector";
 import { shuffleChoices } from "@/lib/engine/shuffle-choices";
 import type { Question } from "@/lib/types/database";
 
@@ -49,25 +48,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ question: stripAnswer(selected) });
     }
 
-    // Pool exhausted — generate a fresh batch from Gemini, targeting a
-    // weak category at the right difficulty band.
+    // Pool exhausted — generate a fresh batch from Gemini. Category is
+    // rolled at random (same coverage rule as the selector); only the
+    // difficulty band is adapted, from that category's Elo.
     const { data: stats } = await admin
       .from("student_stats")
       .select("category, elo_rating, total_attempted")
       .eq("student_id", user.id)
       .order("elo_rating", { ascending: true });
 
-    let targetCategory: DsatCategory;
-    const laggard =
-      stats && stats.length > 0 && Math.random() < 0.7
-        ? pickLaggardCategory(stats)
-        : null;
-    if (laggard) {
-      targetCategory = laggard as DsatCategory;
-    } else {
-      targetCategory =
-        DSAT_CATEGORIES[Math.floor(Math.random() * DSAT_CATEGORIES.length)];
-    }
+    const targetCategory: DsatCategory = pickTargetCategory();
 
     const catStat = stats?.find(
       (s: { category: string }) => s.category === targetCategory

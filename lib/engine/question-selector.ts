@@ -1,41 +1,31 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Question } from "@/lib/types/database";
+import { DSAT_CATEGORIES, type DsatCategory } from "@/lib/constants";
 
-interface LaggardStat {
+interface CategoryStat {
   category: string;
   elo_rating: number;
   total_attempted: number;
 }
 
 /**
- * Pick a single laggard category from the bottom 3 by Elo, weighted by
- * how far behind it is and how few attempts it has. A category at Elo
- * 612 with 4 attempts beats one at Elo 800 with 30 attempts — that
- * stops a low-Elo / small-history category (e.g. CoE Quantitative with
- * 4 questions) from being crowded out when the selector samples
- * uniformly across a multi-category candidate pool.
+ * Pick the category for the next question, uniformly at random across
+ * all ten DSAT categories.
  *
- * Returns null when there are no stats yet (new student).
+ * This deliberately does *not* target weak categories. Weighting toward
+ * the categories a student misses most concentrates practice on three
+ * of ten skills and leaves the rest barely drilled — the student meets
+ * Cross-Text Connections a handful of times in a month because they
+ * happen to be decent at it. The test scores all ten, so coverage beats
+ * remediation: every category comes up equally often, and difficulty
+ * targeting (the Elo band, which is still per-category) is what adapts
+ * to how the student is doing.
+ *
+ * Missed questions still come back — via spaced repetition, which is
+ * tier 1 of the cascade and unaffected by this.
  */
-export function pickLaggardCategory(stats: LaggardStat[]): string | null {
-  if (stats.length === 0) return null;
-  const sorted = [...stats].sort((a, b) => a.elo_rating - b.elo_rating);
-  const candidates = sorted.slice(0, 3);
-
-  const weights = candidates.map(
-    (s) =>
-      Math.max(1, 900 - s.elo_rating) +
-      Math.max(0, 20 - s.total_attempted) * 10
-  );
-  const total = weights.reduce((a, b) => a + b, 0);
-  if (total <= 0) return candidates[0].category;
-
-  let r = Math.random() * total;
-  for (let i = 0; i < candidates.length; i++) {
-    r -= weights[i];
-    if (r <= 0) return candidates[i].category;
-  }
-  return candidates[candidates.length - 1].category;
+export function pickTargetCategory(): DsatCategory {
+  return DSAT_CATEGORIES[Math.floor(Math.random() * DSAT_CATEGORIES.length)];
 }
 
 /**
@@ -43,16 +33,13 @@ export function pickLaggardCategory(stats: LaggardStat[]): string | null {
  *
  * Priority:
  * 1. Spaced repetition items due today (any source)
- * 2. Elo-matched CB question in the single laggard category chosen by
- *    pickLaggardCategory(), at *that category's* own Elo ±150
- * 3. Elo-matched CB question in the bottom 3 weakest categories at
- *    average-of-bottom-3 Elo ±150 (broader fallback when the laggard
- *    pool is depleted)
- * 4. Elo-matched CB question in any category at the same band
- * 5. Elo-matched any-source question in the bottom 3 categories
- * 6. Elo-matched any-source question in any category
- * 7. Any unseen question at all (any difficulty, any source)
- * 8. Returns null so the caller can trigger Gemini generation
+ * 2. Elo-matched CB question in a randomly chosen category, at *that
+ *    category's* own Elo ±150
+ * 3. Elo-matched any-source question in that same random category
+ * 4. Elo-matched CB question in any category at the overall Elo ±150
+ * 5. Elo-matched any-source question in any category
+ * 6. Any unseen question at all (any difficulty, any source)
+ * 7. Returns null so the caller can trigger Gemini generation
  *
  * Only never-answered questions are served. Questions the student has
  * already answered (right or wrong) come back solely via spaced
@@ -61,13 +48,15 @@ export function pickLaggardCategory(stats: LaggardStat[]): string | null {
  * generation has failed, as a better-than-nothing fallback. Repeats
  * within the current session are never served.
  *
- * The CB-first preference at steps 2-4 means a student is always
+ * The CB-first preference at steps 2 and 4 means a student is always
  * served authentic College Board content when an Elo-appropriate one
- * exists, before falling back to AI-generated material. Step 2's
- * single-category targeting is what equalizes Elo across categories
- * over time — without it, multi-category sampling lets large-pool
- * categories (Inferences, Central Ideas) starve small-pool laggards
- * (CoE Quantitative).
+ * exists, before falling back to AI-generated material.
+ *
+ * **Category is random, not weakness-weighted** (see
+ * pickTargetCategory). Steps 2-3 re-roll per question, so over a
+ * session all ten categories come up in roughly equal measure. Elo is
+ * still per-category and still sets the difficulty window, so the
+ * *level* adapts even though the *topic* doesn't.
  */
 export async function selectNextQuestion(
   supabase: SupabaseClient,
@@ -125,7 +114,8 @@ export async function selectNextQuestion(
     }
   }
 
-  // 2. Get student stats to find weakest categories
+  // 2. Get student stats — used only for difficulty targeting now, not
+  //    for choosing which category to serve.
   const { data: stats } = await supabase
     .from("student_stats")
     .select("category, elo_rating, total_attempted")
@@ -134,71 +124,57 @@ export async function selectNextQuestion(
 
   const eloRange = 150; // wider range to find more candidates
 
-  // Bottom-3 average is used as the broader fallback target.
-  let avgWeakElo = 500;
-  let weakCategoryNames: string[] = [];
+  // Overall average Elo centres the difficulty window for the
+  // any-category fallback tiers.
+  let avgElo = 500;
   if (stats && stats.length > 0) {
-    const weakest = stats.slice(0, 3);
-    weakCategoryNames = weakest.map((s: { category: string }) => s.category);
-    avgWeakElo = Math.round(
-      weakest.reduce(
-        (sum: number, s: { elo_rating: number }) => sum + s.elo_rating,
-        0
-      ) / weakest.length
+    avgElo = Math.round(
+      (stats as CategoryStat[]).reduce((sum, s) => sum + s.elo_rating, 0) /
+        stats.length
     );
   }
 
-  // Pick a single laggard for the first tier so it doesn't get
-  // out-sampled by larger sibling pools.
-  const chosenLaggard = pickLaggardCategory((stats ?? []) as LaggardStat[]);
-  const chosenStat = chosenLaggard
-    ? (stats as LaggardStat[]).find((s) => s.category === chosenLaggard)
-    : null;
+  // Roll a category for this question. Uniform across all ten, so
+  // coverage is even; the band below is what adapts to skill.
+  const targetCategory = pickTargetCategory();
+  const targetStat = (stats as CategoryStat[] | null)?.find(
+    (s) => s.category === targetCategory
+  );
+  // No stats row yet means the student has never attempted this
+  // category — the whole point of rolling randomly. Centre on the
+  // overall average until it has a rating of its own.
+  const targetElo = targetStat?.elo_rating ?? avgElo;
 
   // Build the cascade. Each tier tries CB first, then any source.
   // The earliest tier that returns a question wins.
   const tiers: Array<Parameters<typeof findUnseen>[3]> = [];
 
-  // 2a. Single laggard at its OWN Elo, CB-first
-  if (chosenStat) {
-    tiers.push({
-      eloMin: chosenStat.elo_rating - eloRange,
-      eloMax: chosenStat.elo_rating + eloRange,
-      categories: [chosenStat.category],
-      cbOnly: true,
-    });
-  }
-
-  // 2b. Bottom 3 at avg Elo, CB-first (broader pool when 2a misses)
-  if (weakCategoryNames.length > 0) {
-    tiers.push({
-      eloMin: avgWeakElo - eloRange,
-      eloMax: avgWeakElo + eloRange,
-      categories: weakCategoryNames,
-      cbOnly: true,
-    });
-  }
-
-  // 3. CB any category at avg Elo
+  // 2. Rolled category at its own Elo, CB-first
   tiers.push({
-    eloMin: avgWeakElo - eloRange,
-    eloMax: avgWeakElo + eloRange,
+    eloMin: targetElo - eloRange,
+    eloMax: targetElo + eloRange,
+    categories: [targetCategory],
     cbOnly: true,
   });
 
-  // 4. Any source in bottom 3 at avg Elo
-  if (weakCategoryNames.length > 0) {
-    tiers.push({
-      eloMin: avgWeakElo - eloRange,
-      eloMax: avgWeakElo + eloRange,
-      categories: weakCategoryNames,
-    });
-  }
-
-  // 5. Any source any category at avg Elo
+  // 3. Rolled category, any source — exhaust the topic before widening
   tiers.push({
-    eloMin: avgWeakElo - eloRange,
-    eloMax: avgWeakElo + eloRange,
+    eloMin: targetElo - eloRange,
+    eloMax: targetElo + eloRange,
+    categories: [targetCategory],
+  });
+
+  // 4. CB any category at overall Elo
+  tiers.push({
+    eloMin: avgElo - eloRange,
+    eloMax: avgElo + eloRange,
+    cbOnly: true,
+  });
+
+  // 5. Any source any category at overall Elo
+  tiers.push({
+    eloMin: avgElo - eloRange,
+    eloMax: avgElo + eloRange,
   });
 
   // 6. Last resort: any unseen question at any difficulty

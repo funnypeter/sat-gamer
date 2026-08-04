@@ -72,15 +72,17 @@ The route delegates to `selectNextQuestion()` in `lib/engine/question-selector.t
 
 The selector cascade (first match wins):
 1. **Spaced repetition** items due today (any source) — see `app/api/sessions/answer/route.ts` for how SR rows are created.
-2. **CB-first** in weakest categories within the student's Elo band (±150 around average rating of the 3 weakest categories).
-3. **CB** in any category within Elo band.
-4. Any source in weakest categories within Elo band.
-5. Any source in any category within Elo band.
-6. Any unseen question at any difficulty (last-resort, only if Elo band is empty).
-7. Returns null → route triggers Gemini generation targeting a weak category at the right difficulty band.
+2. **CB-first** in a **randomly rolled category** (`pickTargetCategory()`), within that category's own Elo band (±150).
+3. Any source in that same rolled category, same band.
+4. **CB** in any category within the overall Elo band (±150 around the average of all category ratings).
+5. Any source in any category within the overall band.
+6. Any unseen question at any difficulty (last-resort, only if the Elo band is empty).
+7. Returns null → route triggers Gemini generation for a randomly rolled category at that category's difficulty band.
 8. Only if generation *fails* does the route call the selector again with `{ allowRepeats: true }`, re-serving an already-answered question (never one from the current session), always with shuffled choices.
 
 The cascade itself never re-serves answered questions — steps 2-6 filter to never-answered only. Previously-answered questions come back solely via spaced repetition (step 1) or the step-8 fallback.
+
+**Category is random; difficulty is adaptive.** The selector used to weight toward the student's weakest categories (a `pickLaggardCategory()` draw over the bottom 3 by Elo). That concentrated a session on three of ten skills and left the rest barely drilled — the DSAT scores all ten, so coverage wins. `pickTargetCategory()` now draws uniformly across `DSAT_CATEGORIES` and is re-rolled per question, while the Elo band is still taken from *that category's* own rating, so the level still adapts. Missed questions still come back through spaced repetition (step 1), which is untouched. `/api/questions/prefetch` uses the same uniform draw — leaving it weak-category-weighted would rebuild the bias in the generated pool the selector falls back on.
 
 **Shuffled servings and `choiceMap`**: SR reviews and repeat fallbacks are served with shuffled, re-labeled choices plus a `choiceMap` (displayed label → original label). The client must translate the student's pick back to original-label space before POSTing to `/api/sessions/answer`, and translate `correctAnswer`/`explanations` in the response back to displayed space. The map is kept in the Zustand session store **next to `currentQuestion`** (set atomically via `setCurrentQuestion(question, choiceMap)`) — never in page-local state, which resets on remount while the store's question survives, silently grading against the wrong letters.
 
@@ -159,6 +161,7 @@ Cascade: due reviews → **due mastered refreshers** → new words (under the in
 - **`IN_FLIGHT_LIMIT = 20`** caps how many words are being learned at once. Without it the selector introduces a new word every rep — a week of practice meets 200 words once each and learns none.
 - **Due refreshers sit above new words** (step 2). Below them they would never fire — unseen words outnumber due refreshers for months. They can't crowd out new material either: a mastered word can't come due more than once every three weeks.
 - **Steps 4-6 exclude words already answered today.** This is load-bearing, not politeness: mastery is 3 consecutive correct, so without it a student at the cap gets the same word three times in ten minutes and "masters" it on short-term recall alone. The final step drops the filter so a long session never dead-ends.
+- **Ties inside every step are shuffled.** Each list is passed through `shuffled()` before it's sorted; `Array.prototype.sort` is stable, so the tier order survives and only the ties are randomized. Without it the sort keys (tier, due date, last-seen) left new words in word-list order — which is alphabetical, so a new student's first week was `abase, abate, abdicate, aberrant…`. The comparators return `0` on a tie for this reason; a comparator that returns a constant `1` instead would undo the shuffle.
 
 ### Mastery & spacing — `lib/vocab/mastery.ts`
 
