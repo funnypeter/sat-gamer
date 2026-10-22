@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   try {
     await createAccount(
       { email, password, displayName, familyId: family.id, role: "parent" },
-      { signIn: true }
+      { signIn: false }
     );
   } catch (err) {
     const { error, status } = signupErrorResponse(err);

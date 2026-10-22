@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SAT Gamer
 
-## Getting Started
+Digital SAT prep where students earn gaming time by practicing. Live at **https://satgamer.pmansour.com**.
 
-First, run the development server:
+- **Reading & Writing** and **Math** practice from College Board's official question bank, with adaptive difficulty (Elo per category), spaced repetition of missed questions, and an AI tutor (Gemini) on every answer.
+- **Vocabulary** drilling over a curated SAT word list.
+- **Parents** see each student's progress and approve requests to redeem earned gaming time; optional push alerts.
+
+## Stack
+
+Next.js 15 (App Router) on **Cloudflare Workers** via [OpenNext](https://opennext.js.org/cloudflare), with **D1** (SQLite) for data and **R2** for profile photos. See [`CLAUDE.md`](CLAUDE.md) for the architecture, the question pipeline and the conventions.
+
+## Develop
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npx wrangler d1 migrations apply DB --local   # local database
+echo "GEMINI_API_KEY=..." > .dev.vars         # for the AI tutor / generation
+npm run dev                                    # Next dev server with local D1/R2 bindings
+npm run preview                                # or: the real Worker, locally
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Deploy
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Nothing deploys automatically from GitHub.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+CI=1 npx wrangler d1 migrations apply DB --remote   # if migrations/ changed
+npm run deploy
+```

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+
 import Link from "next/link";
+import { signInWithForm } from "@/lib/sign-in-form";
 
 type Role = "parent" | "student" | null;
 
@@ -16,7 +17,6 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [familyPreview, setFamilyPreview] = useState<string | null>(null);
-  const router = useRouter();
 
   // Validate family code as student types
   async function checkCode(code: string) {
@@ -28,11 +28,6 @@ export default function SignupPage() {
       const data = await resp.json();
       if (data.familyName) setFamilyPreview(data.familyName);
     } catch {}
-  }
-
-  // Fire-and-forget: import CB questions in background after parent signup
-  function importCBQuestions() {
-    fetch("/api/questions/import-cb", { method: "POST" }).catch(() => {});
   }
 
   async function handleSignup(e: React.FormEvent) {
@@ -53,10 +48,10 @@ export default function SignupPage() {
           setError(errData.error || "Failed to create account.");
           return;
         }
-        // Import College Board questions in the background (fire-and-forget)
-        importCBQuestions();
-        router.push("/parent-dashboard");
-        router.refresh();
+        // Sign in with a real form POST so the session cookie sticks on iPhones
+        // (see lib/sign-in-form.ts); it lands on the right dashboard.
+        signInWithForm(email, password);
+        return;
       } else {
         // Join family as student
         const resp = await fetch("/api/auth/join", {
@@ -69,8 +64,10 @@ export default function SignupPage() {
           setError(errData.error || "Failed to join family.");
           return;
         }
-        router.push("/student-dashboard");
-        router.refresh();
+        // Sign in with a real form POST so the session cookie sticks on iPhones
+        // (see lib/sign-in-form.ts); it lands on the right dashboard.
+        signInWithForm(email, password);
+        return;
       }
     } catch {
       setError("An unexpected error occurred.");

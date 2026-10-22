@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
+import { signInWithForm } from "@/lib/sign-in-form";
 
 export default function ParentJoinPage() {
   const params = useParams();
@@ -16,7 +17,6 @@ export default function ParentJoinPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     async function lookupFamily() {
@@ -60,10 +60,10 @@ export default function ParentJoinPage() {
         return;
       }
 
-      document.cookie = `user_role=parent; path=/; max-age=${60 * 60 * 24 * 30}`;
-
-      router.push("/parent-dashboard");
-      router.refresh();
+      // Sign in with a real form POST so the session cookie sticks on iPhones
+      // (see lib/sign-in-form.ts); it lands on the right dashboard.
+      signInWithForm(email, password);
+      return;
     } catch {
       setError("An unexpected error occurred.");
     } finally {

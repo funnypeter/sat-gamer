@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   try {
     await createAccount(
       { email, password, displayName, familyId: family.id, role: "parent" },
-      { signIn: true }
+      { signIn: false }
     );
   } catch (err) {
     // Clean up family if account creation fails

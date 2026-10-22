@@ -1,52 +1,15 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import LoginForm from "./LoginForm";
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      const resp = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const result = await resp.json().catch(() => ({}));
-
-      if (!resp.ok) {
-        setError(result.error || "Login failed. Please try again.");
-        return;
-      }
-
-      const profile = { role: result.role as string };
-
-      // Set a cookie so middleware can read the role
-      document.cookie = `user_role=${profile?.role ?? "student"}; path=/; max-age=${60 * 60 * 24 * 30}`;
-
-      if (profile?.role === "parent") {
-        router.push("/parent-dashboard");
-      } else {
-        router.push("/student-dashboard");
-      }
-
-      router.refresh();
-    } catch {
-      setError("An unexpected error occurred.");
-    } finally {
-      setLoading(false);
-    }
-  }
+// Sign-in posts a real HTML form to /api/auth/login (see the note there for
+// why it isn't fetch). A failed attempt redirects back here with ?error= and
+// the email, so the form can show the message and keep what they typed.
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; email?: string }>;
+}) {
+  const { error, email } = await searchParams;
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
@@ -61,52 +24,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleLogin} className="card-glass p-8 space-y-6">
-          {error && (
-            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="email" className="label">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
-              placeholder="you@example.com"
-              required
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="label">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
-              placeholder="Enter your password"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full"
-          >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
+        <LoginForm error={error ?? null} defaultEmail={email ?? ""} />
 
         <p className="text-center text-sm text-gray-400">
           Don&apos;t have an account?{" "}
