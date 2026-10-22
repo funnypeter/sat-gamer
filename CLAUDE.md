@@ -252,7 +252,7 @@ Patterns matched: `the author of (this|the) passage`, `the (writer|author|speake
 - `npm run dev` — Next.js dev server (bindings come from `wrangler.jsonc`, local D1/R2; secrets in `.dev.vars`)
 - `npm run build` — Next.js build (also run by the deploy)
 - `npm run preview` — build and run the real Worker locally
-- `npm run deploy` — build and deploy to Cloudflare. Nothing auto-deploys from git; deploy after merging to `master`.
+- `npm run deploy` — build and deploy to Cloudflare. Nothing auto-deploys from git. **Deploying is part of every code task**: once a change is verified, apply any new migration remotely (`CI=1 npx wrangler d1 migrations apply DB --remote` — without `CI=1` it waits on a prompt), run `npm run deploy`, and smoke-test https://satgamer.pmansour.com. Don't hand this step to the user.
 - `npm run lint`
 
 ## Things to watch out for
