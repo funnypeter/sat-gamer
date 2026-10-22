@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/db";
 import { getGeminiModel } from "@/lib/gemini/client";
 import { GeneratedQuestionsArraySchema } from "@/lib/gemini/schema";
 import { buildQuestionGenerationPrompt } from "@/lib/gemini/prompts";
-import type { DsatCategory } from "@/lib/constants";
+import { parseSubject, type DsatCategory } from "@/lib/constants";
 import { selectNextQuestion, pickTargetCategory } from "@/lib/engine/question-selector";
 import { shuffleChoices } from "@/lib/engine/shuffle-choices";
 import type { Question } from "@/lib/types/database";
@@ -21,10 +21,23 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const sessionId = url.searchParams.get("sessionId") ?? undefined;
 
+    // Reading & Writing or Math. The session row is authoritative (it was
+    // started for one track); the query param covers a missing session.
+    let subject = parseSubject(url.searchParams.get("subject"));
+    if (sessionId) {
+      const { data: session } = await admin
+        .from("sessions")
+        .select("subject")
+        .eq("id", sessionId)
+        .eq("student_id", user.id)
+        .maybeSingle();
+      if (session) subject = parseSubject(session.subject);
+    }
+
     // The selector handles spaced repetition, CB-first prioritization,
     // Elo matching, weak-category targeting, and any-source fallback.
     // It returns null only when every question in the DB has been seen.
-    const selected = await selectNextQuestion(admin, user.id, sessionId);
+    const selected = await selectNextQuestion(admin, user.id, sessionId, { subject });
     if (selected) {
       // If this question has an SR row for the student, they got it
       // wrong before — shuffle the choices so they re-think the answer
@@ -35,7 +48,8 @@ export async function GET(request: Request) {
         .eq("student_id", user.id)
         .eq("question_id", selected.id)
         .maybeSingle();
-      if (srRow) {
+      // Grid-ins have no choices to shuffle.
+      if (srRow && selected.answer_format !== "spr") {
         const { choices, choiceMap } = shuffleChoices(
           selected.choices,
           selected.correct_answer,
@@ -51,21 +65,12 @@ export async function GET(request: Request) {
     // Pool exhausted — generate a fresh batch from Gemini. Category is
     // rolled at random (same coverage rule as the selector); only the
     // difficulty band is adapted, from that category's Elo.
-    const { data: stats } = await admin
-      .from("student_stats")
-      .select("category, elo_rating, total_attempted")
-      .eq("student_id", user.id)
-      .order("elo_rating", { ascending: true });
-
-    const targetCategory: DsatCategory = pickTargetCategory();
-
-    const catStat = stats?.find(
-      (s: { category: string }) => s.category === targetCategory
-    );
-    const elo = catStat?.elo_rating ?? 500;
-    const band = elo < 450 ? "easy" : elo < 600 ? "medium" : "hard";
-
-    const generated = await generateAndServe(admin, targetCategory, band);
+    //
+    // Reading & Writing only. Math is served purely from College Board's
+    // bank: a model-written math item with a wrong key is worse than a
+    // repeat, and the generation prompts/schema are passage-shaped. A
+    // math student who exhausts the bank gets repeats (below).
+    const generated = subject === "verbal" ? await generateVerbal(admin, user.id) : null;
     if (generated) {
       return NextResponse.json({ question: stripAnswer(generated) });
     }
@@ -75,8 +80,12 @@ export async function GET(request: Request) {
     // the choices so it's still real practice instead of label recall.
     const repeat = await selectNextQuestion(admin, user.id, sessionId, {
       allowRepeats: true,
+      subject,
     });
     if (repeat) {
+      if (repeat.answer_format === "spr") {
+        return NextResponse.json({ question: stripAnswer(repeat) });
+      }
       const { choices, choiceMap } = shuffleChoices(
         repeat.choices,
         repeat.correct_answer,
@@ -97,6 +106,24 @@ export async function GET(request: Request) {
   }
 }
 
+async function generateVerbal(admin: ReturnType<typeof createAdminClient>, userId: string) {
+    const { data: stats } = await admin
+      .from("student_stats")
+      .select("category, elo_rating, total_attempted")
+      .eq("student_id", userId)
+      .order("elo_rating", { ascending: true });
+
+    const targetCategory = pickTargetCategory("verbal") as DsatCategory;
+
+    const catStat = stats?.find(
+      (s: { category: string }) => s.category === targetCategory
+    );
+    const elo = catStat?.elo_rating ?? 500;
+    const band = elo < 450 ? "easy" : elo < 600 ? "medium" : "hard";
+
+    return generateAndServe(admin, targetCategory, band);
+}
+
 function stripAnswer(q: Question | Record<string, unknown>) {
   const generatedBy = (q as { generated_by?: string }).generated_by;
   const source =
@@ -110,6 +137,9 @@ function stripAnswer(q: Question | Record<string, unknown>) {
     question_text: (q as { question_text: string }).question_text,
     choices: (q as { choices: unknown }).choices,
     difficulty_rating: (q as { difficulty_rating: number }).difficulty_rating,
+    subject: (q as { subject?: string }).subject ?? "verbal",
+    // accepted_answers is deliberately not sent — it's the answer key.
+    answer_format: (q as { answer_format?: string }).answer_format ?? "mcq",
     source,
   };
 }

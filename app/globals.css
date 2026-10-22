@@ -128,3 +128,33 @@ body::before {
     text-wrap: balance;
   }
 }
+
+/* Question content (passages, stems, choices, rationales): College Board
+   math is MathML and some stimuli carry data tables. */
+.question-html math {
+  font-size: 1.1em;
+  math-style: normal;
+}
+.question-html math[display="block"] {
+  display: block math;
+  margin: 0.5em 0;
+}
+.question-html table {
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.875rem;
+  font-weight: 400;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+.question-html th,
+.question-html td {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.35em 0.6em;
+  text-align: center;
+}
+.question-html th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}

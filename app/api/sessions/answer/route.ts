@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/db";
 import { calculateNewElo } from "@/lib/engine/elo";
 import { DEFAULT_SETTINGS, EARNING_RATES } from "@/lib/constants";
 import { startOfWeekInAppTimezone } from "@/lib/date";
+import { isSprAnswerCorrect } from "@/lib/math-answer";
 
 // NOTE: CB questions used to be re-categorized by a blocking Gemini call here,
 // on the first answer to each one. That put a multi-second AI round-trip
@@ -69,6 +70,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         isCorrect: alreadyAnswered.is_correct,
         correctAnswer: question.correct_answer,
+        acceptedAnswers: question.accepted_answers ?? null,
         explanations: question.explanations,
         eloChange: 0,
         newElo: null,
@@ -80,7 +82,11 @@ export async function POST(request: Request) {
       });
     }
 
-    const isCorrect = answerGiven === question.correct_answer;
+    // Grid-ins (math "spr") accept several written forms of the answer.
+    const isCorrect =
+      question.answer_format === "spr"
+        ? isSprAnswerCorrect(String(answerGiven ?? ""), question.accepted_answers ?? [question.correct_answer])
+        : answerGiven === question.correct_answer;
 
     // Check weekly cap. Resets Monday at midnight Pacific — not a
     // rolling 7-day window — so a student always has a predictable
@@ -258,6 +264,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       isCorrect,
       correctAnswer: question.correct_answer,
+      acceptedAnswers: question.accepted_answers ?? null,
       explanations: question.explanations,
       eloChange: eloAfter - eloBefore,
       newElo: eloAfter,

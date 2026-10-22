@@ -15,6 +15,9 @@ interface ReviewCardProps {
   correctAnswer: string;
   answerGiven: string;
   explanations: Record<string, string> | null;
+  /** "spr" = math grid-in (typed answer, no choices). */
+  answerFormat?: "mcq" | "spr";
+  acceptedAnswers?: string[] | null;
 }
 
 function choiceText(choices: QuestionChoice[], label: string): string {
@@ -31,7 +34,14 @@ export default function ReviewCard({
   correctAnswer,
   answerGiven,
   explanations,
+  answerFormat = "mcq",
+  acceptedAnswers = null,
 }: ReviewCardProps) {
+  const isGridIn = answerFormat === "spr";
+  // Grid-ins keep their one worked solution under "answer", not a letter.
+  const correctExplanation = isGridIn
+    ? Object.values(explanations ?? {}).filter(Boolean).join("")
+    : explanations?.[correctAnswer] ?? "";
   const [expanded, setExpanded] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -60,12 +70,14 @@ export default function ReviewCard({
         </div>
       </div>
 
+      {passageText && (
+        <div
+          className={`question-html text-sm text-gray-400 ${expanded ? "[&_p]:mb-2 [&_p:last-child]:mb-0" : "line-clamp-3 [&_p]:inline"}`}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(passageText) }}
+        />
+      )}
       <div
-        className={`text-sm text-gray-400 ${expanded ? "[&_p]:mb-2 [&_p:last-child]:mb-0" : "line-clamp-3 [&_p]:inline"}`}
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(passageText) }}
-      />
-      <div
-        className={`text-sm font-medium text-white ${expanded ? "" : "line-clamp-2"}`}
+        className={`question-html text-sm font-medium text-white ${expanded ? "" : "line-clamp-2"}`}
         dangerouslySetInnerHTML={{ __html: sanitizeHtml(questionText) }}
       />
 
@@ -82,7 +94,9 @@ export default function ReviewCard({
         </div>
         <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-3 py-2">
           <span className="text-gray-400">Correct: </span>
-          <span className="text-accent-green font-semibold">{correctAnswer}</span>
+          <span className="text-accent-green font-semibold">
+            {isGridIn && acceptedAnswers?.length ? acceptedAnswers.join(" or ") : correctAnswer}
+          </span>
           {correctText && (
             <div
               className="mt-1 text-gray-300 [&_p]:inline"
@@ -92,15 +106,15 @@ export default function ReviewCard({
         </div>
       </div>
 
-      {explanations && (
+      {correctExplanation && (
         <div className="text-xs text-gray-400 bg-white/5 rounded-lg p-3">
           <p className="font-semibold text-accent-green mb-1">
-            Why {correctAnswer} is correct:
+            {isGridIn ? "How to solve it:" : `Why ${correctAnswer} is correct:`}
           </p>
           <div
-            className="[&_p]:mb-2 [&_p:last-child]:mb-0"
+            className="question-html [&_p]:mb-2 [&_p:last-child]:mb-0"
             dangerouslySetInnerHTML={{
-              __html: sanitizeHtml(explanations[correctAnswer] ?? ""),
+              __html: sanitizeHtml(correctExplanation),
             }}
           />
         </div>

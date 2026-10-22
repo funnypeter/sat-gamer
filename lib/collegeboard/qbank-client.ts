@@ -21,11 +21,26 @@ const QBANK_BASE = "https://qbank-api.collegeboard.org/msreportingquestionbank-p
 export const RW_DOMAINS = ["INI", "CAS", "EOI", "SEC"] as const;
 export type RwDomain = (typeof RW_DOMAINS)[number];
 
+/**
+ * Domain codes for the SAT Math section: Algebra, Advanced Math,
+ * Problem-Solving & Data Analysis, Geometry & Trigonometry.
+ */
+export const MATH_DOMAINS = ["H", "P", "Q", "S"] as const;
+export type MathDomain = (typeof MATH_DOMAINS)[number];
+
+/** Every importable domain, Reading & Writing first. */
+export const ALL_DOMAINS = [...RW_DOMAINS, ...MATH_DOMAINS] as const;
+export type QbankDomain = RwDomain | MathDomain;
+
+export function isMathDomain(domain: string): domain is MathDomain {
+  return (MATH_DOMAINS as readonly string[]).includes(domain);
+}
+
 /** A row from the question index endpoint. Metadata only — no content. */
 export interface QbankIndexEntry {
   external_id: string;
   questionId: string;
-  primary_class_cd: string;       // INI / CAS / EOI / SEC
+  primary_class_cd: string;       // INI / CAS / EOI / SEC, or math H / P / Q / S
   primary_class_cd_desc: string;
   skill_cd: string;                // CID / COE / INF / CTC / TSP / WIC / SYN / TRA / BOU / FSS
   skill_desc: string;
@@ -47,8 +62,8 @@ export interface QbankQuestionDetail {
   stimulus: string;                // HTML — the passage / prompt prose
   rationale: string;               // HTML — explanation of the correct answer
   answerOptions: QbankAnswerOption[];
-  correct_answer: string[];        // array of answerOption ids (typically length 1)
-  type: string;                    // "mcq" for the questions we want
+  correct_answer: string[];        // mcq: ["A"]; spr: every accepted form, e.g. ["3/2", "1.5"]
+  type: string;                    // "mcq" (choices) or "spr" (math grid-in)
   origin: string;
   vaultid: string;
   templateclusterid: string;
@@ -83,15 +98,15 @@ async function postJson<T>(path: string, body: object): Promise<T> {
 }
 
 /**
- * Fetch the index (metadata only) for every question in a given R&W domain.
+ * Fetch the index (metadata only) for every question in a given domain.
  * One call returns hundreds of rows. No throttling needed.
  */
 export async function fetchQuestionIndex(
-  domain: RwDomain
+  domain: QbankDomain
 ): Promise<QbankIndexEntry[]> {
   return postJson<QbankIndexEntry[]>("get-questions", {
-    asmtEventId: 99, // SAT
-    test: 1,         // Reading & Writing (use 2 for Math)
+    asmtEventId: 99,                      // SAT
+    test: isMathDomain(domain) ? 2 : 1,   // 1 = Reading & Writing, 2 = Math
     domain,
   });
 }

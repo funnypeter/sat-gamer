@@ -13,6 +13,9 @@ interface FeedbackOverlayProps {
   selectedAnswer: string;
   explanations: Record<string, string>;
   choices: QuestionChoice[];
+  /** "spr" = math grid-in: no choices; show the typed answer and accepted forms. */
+  answerFormat?: "mcq" | "spr";
+  acceptedAnswers?: string[] | null;
   /** Displayed label -> original label for shuffled servings; see AskGeminiChat. */
   choiceMap?: Record<string, string> | null;
   onNext: () => void;
@@ -25,9 +28,12 @@ export default function FeedbackOverlay({
   selectedAnswer,
   explanations,
   choices,
+  answerFormat = "mcq",
+  acceptedAnswers = null,
   choiceMap = null,
   onNext,
 }: FeedbackOverlayProps) {
+  const isGridIn = answerFormat === "spr";
   const [chatOpen, setChatOpen] = useState(false);
   const perChoiceExplanations = splitCbRationale(explanations);
 
@@ -102,6 +108,32 @@ export default function FeedbackOverlay({
         )}
       </div>
 
+      {/* Grid-in: typed answer, accepted forms, and CB's worked solution */}
+      {isGridIn && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className={`rounded-xl border p-3 ${isCorrect ? "border-accent-green/30 bg-accent-green/5" : "border-accent-red/30 bg-accent-red/5"}`}>
+              <p className="text-xs text-gray-400">Your answer</p>
+              <p className={`text-lg font-bold ${isCorrect ? "text-accent-green" : "text-accent-red"}`}>{selectedAnswer || "—"}</p>
+            </div>
+            <div className="rounded-xl border border-accent-green/30 bg-accent-green/5 p-3">
+              <p className="text-xs text-gray-400">Accepted</p>
+              <p className="text-lg font-bold text-accent-green">
+                {(acceptedAnswers && acceptedAnswers.length > 0 ? acceptedAnswers : [correctAnswer]).join("  or  ")}
+              </p>
+            </div>
+          </div>
+          {Object.values(explanations).some(Boolean) && (
+            <div
+              className="question-html rounded-xl border border-white/5 bg-navy-800/40 p-4 text-sm text-gray-300 [&_p]:mb-2 [&_p:last-child]:mb-0"
+              dangerouslySetInnerHTML={{
+                __html: sanitizeHtml(Object.values(explanations).filter(Boolean).join("")),
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {/* Answer breakdown */}
       <div className="space-y-3">
         {choices.map((choice) => {
@@ -134,13 +166,13 @@ export default function FeedbackOverlay({
                   {choice.label}
                 </span>
                 <div className="flex-1 space-y-1">
-                  <p
-                    className="text-sm text-gray-200"
+                  <div
+                    className="question-html text-sm text-gray-200"
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(choice.text) }}
                   />
                   {perChoiceExplanations[choice.label] && (
                     <div
-                      className="text-xs text-gray-400 italic [&_p]:mb-2 [&_p:last-child]:mb-0"
+                      className="question-html text-xs text-gray-400 italic [&_p]:mb-2 [&_p:last-child]:mb-0"
                       dangerouslySetInnerHTML={{
                         __html: sanitizeHtml(perChoiceExplanations[choice.label]),
                       }}

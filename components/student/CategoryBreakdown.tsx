@@ -13,8 +13,11 @@ export default function CategoryBreakdown({
   stats,
   avgTimes,
   overallAvgSeconds,
+  title = "Category Performance",
 }: {
   stats: CategoryStat[];
+  /** Card heading, e.g. the section name when Math and R&W are shown separately. */
+  title?: string;
   /** Average answer time in seconds, keyed by category. */
   avgTimes?: Record<string, number>;
   overallAvgSeconds?: number | null;
@@ -39,7 +42,7 @@ export default function CategoryBreakdown({
             </svg>
           </div>
           <div className="text-left">
-            <p className="text-sm font-semibold text-white">Category Performance</p>
+            <p className="text-sm font-semibold text-white">{title}</p>
             <p className="text-xs text-gray-400">
               {Math.round(overallAcc)}% overall · {stats.length} categories
               {overallAvgSeconds ? ` · ${Math.round(overallAvgSeconds)}s avg` : ""}

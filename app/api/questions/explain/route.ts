@@ -4,9 +4,11 @@ import { createAdminClient } from "@/lib/db";
 import { getGeminiClient } from "@/lib/gemini/client";
 import { remapExplanationsToDisplayed, splitCbRationale } from "@/lib/cb-rationale";
 import type { Question, QuestionChoice } from "@/lib/types/database";
+import { mathToText } from "@/lib/mathml";
+import { isSprAnswerCorrect } from "@/lib/math-answer";
 
-// Gemini replies are usually fast, but give headroom over Vercel's default
-// 10s function limit. Hobby plan caps this at 60.
+// Gemini replies are usually fast; leftover route config from Vercel (Workers
+// has no wall-clock cap while the client is connected).
 export const maxDuration = 30;
 
 const MAX_MESSAGES = 24;
@@ -17,9 +19,13 @@ interface ChatMessage {
   text: string;
 }
 
-/** Strip all HTML tags so question content reaches the model as plain prose. */
+/**
+ * Strip all HTML tags so question content reaches the model as plain prose.
+ * MathML becomes its alttext first ("StartFraction 3 Over 4 EndFraction"):
+ * stripping the tags alone would run "3" and "4" together into "34".
+ */
 function stripTags(html: string): string {
-  return (html ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return mathToText(html ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -90,11 +96,30 @@ function buildSystemInstruction(q: Question, view: DisplayedQuestion): string {
     .filter((line) => line.length > 3)
     .join("\n");
 
+  const isMath = q.subject === "math";
+  const isGridIn = q.answer_format === "spr";
+  const accepted = q.accepted_answers ?? [q.correct_answer];
+
   const gotItRight =
-    view.answerGiven !== null && view.answerGiven === view.correctAnswer;
+    view.answerGiven !== null &&
+    (isGridIn
+      ? isSprAnswerCorrect(view.answerGiven, accepted)
+      : view.answerGiven === view.correctAnswer);
+
+  // Coaching rules that differ between the two sections; the rest are shared.
+  const sectionRules = isMath
+    ? [
+        "- Work it step by step with the actual numbers from the question, one short step per sentence, so they can follow and redo it. If there is a faster SAT shortcut (plugging in the choices, picking numbers, graphing in Desmos), show that too.",
+        "- If they got it wrong, work out the likely slip from their answer (sign error, solved for the wrong quantity, arithmetic) and name it kindly.",
+        "- Write math in plain text a student can read: x^2, sqrt(5), (3/4)x, 2 * 3. No LaTeX and no symbols they would have to decode. Double-check every number you write.",
+      ]
+    : [
+        "- When they point at wording or grammar they find odd, quote the exact words, then restate that bit the way a person would actually say it today, then explain what it is doing in the sentence.",
+        "- Explain the reasoning a student could reproduce next time — what to notice in the passage, and how it rules choices in or out. Naming the skill is only useful if you show the move.",
+      ];
 
   return [
-    "You are a patient, encouraging SAT tutor talking one-on-one with a high-school student about a Digital SAT Reading & Writing question they just answered. They have already read the official explanation and it did not click — that is why they are talking to you.",
+    `You are a patient, encouraging SAT tutor talking one-on-one with a high-school student about a Digital SAT ${isMath ? "Math" : "Reading & Writing"} question they just answered. They have already read the official explanation and it did not click — that is why they are talking to you.`,
     "",
     "THE QUESTION",
     "",
@@ -104,11 +129,15 @@ function buildSystemInstruction(q: Question, view: DisplayedQuestion): string {
     "",
     `Question:\n${stripTags(q.question_text)}`,
     "",
-    `Answer choices:\n${choices}`,
+    isGridIn
+      ? "Format: grid-in — there are no answer choices; the student typed their own answer."
+      : `Answer choices:\n${choices}`,
     "",
-    `Correct answer: ${view.correctAnswer}`,
+    isGridIn
+      ? `Correct answer: ${accepted.join(" or ")} (any of these forms is accepted)`
+      : `Correct answer: ${view.correctAnswer}`,
     view.answerGiven
-      ? `The student chose ${view.answerGiven}${gotItRight ? " (correct)" : " (incorrect)"}.`
+      ? `The student ${isGridIn ? "entered" : "chose"} ${view.answerGiven}${gotItRight ? " (correct)" : " (incorrect)"}.`
       : "",
     "",
     `Official College Board explanation (the student already read this and it did not help):\n${officialExplanation || "(none provided)"}`,
@@ -117,8 +146,7 @@ function buildSystemInstruction(q: Question, view: DisplayedQuestion): string {
     "",
     "- Answer the exact thing they asked, in your first sentence. If they ask what a phrase means, tell them what it means before you say anything about answer choices.",
     "- Never paraphrase or repeat the official explanation back at them. It already failed. Come at it from a different angle: reword the hard sentence in everyday English, break it into its parts, walk through it clause by clause, or use a short concrete example.",
-    "- When they point at wording or grammar they find odd, quote the exact words, then restate that bit the way a person would actually say it today, then explain what it is doing in the sentence.",
-    "- Explain the reasoning a student could reproduce next time — what to notice in the passage, and how it rules choices in or out. Naming the skill is only useful if you show the move.",
+    ...sectionRules,
     "- Sound like a person, not a textbook. Use contractions, address them as 'you', keep sentences short. Skip openers like 'Great question!' and skip meta-commentary about what you are about to do.",
     "- Finish your thought. Usually 2 to 5 sentences; go a little longer if they asked you to break something down, but never write a wall of text. Do not stop mid-sentence.",
     "- If they say they still do not get it, do not repeat yourself — try a genuinely different explanation.",

@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/db";
 import Link from "next/link";
 import CategoryBreakdown from "@/components/student/CategoryBreakdown";
 import { effectiveStreak } from "@/lib/engine/streak";
-import { formatMinutes } from "@/lib/constants";
+import { formatMinutes, subjectOfCategory } from "@/lib/constants";
 import { VOCAB_TOTAL } from "@/lib/vocab/word-list";
 
 export default async function StudentDashboard() {
@@ -105,27 +105,27 @@ export default async function StudentDashboard() {
   const { data: avgTimeRows } = await admin.rpc("avg_time_by_category", {
     p_student_id: user.id,
   });
+  // Reading & Writing and Math are reported separately: their Elos measure
+  // different skills, so one blended average would describe neither.
   const avgTimes: Record<string, number> = {};
-  let timedAttempts = 0;
-  let timedTotalSeconds = 0;
+  const timed = { verbal: { attempts: 0, seconds: 0 }, math: { attempts: 0, seconds: 0 } };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const row of (avgTimeRows ?? []) as any[]) {
     avgTimes[row.category] = Number(row.avg_seconds);
-    timedAttempts += Number(row.attempts);
-    timedTotalSeconds += Number(row.avg_seconds) * Number(row.attempts);
+    const t = timed[subjectOfCategory(row.category)];
+    t.attempts += Number(row.attempts);
+    t.seconds += Number(row.avg_seconds) * Number(row.attempts);
   }
-  const overallAvgSeconds =
-    timedAttempts > 0 ? timedTotalSeconds / timedAttempts : null;
+  const avgSecondsFor = (subject: "verbal" | "math") =>
+    timed[subject].attempts > 0 ? timed[subject].seconds / timed[subject].attempts : null;
 
-  const avgElo =
-    categoryStats && categoryStats.length > 0
-      ? Math.round(
-          categoryStats.reduce(
-            (sum: number, s: { elo_rating: number }) => sum + s.elo_rating,
-            0
-          ) / categoryStats.length
-        )
-      : 500;
+  type Stat = { category: string; elo_rating: number; total_attempted: number; total_correct: number };
+  const verbalStats = ((categoryStats ?? []) as Stat[]).filter((s) => subjectOfCategory(s.category) === "verbal");
+  const mathStats = ((categoryStats ?? []) as Stat[]).filter((s) => subjectOfCategory(s.category) === "math");
+  const meanElo = (list: Stat[]) =>
+    list.length > 0 ? Math.round(list.reduce((sum, s) => sum + s.elo_rating, 0) / list.length) : 500;
+  const avgElo = meanElo(verbalStats);
+  const mathElo = mathStats.length > 0 ? meanElo(mathStats) : null;
 
   return (
     <div className="mx-auto max-w-md space-y-6 animate-fade-in">
@@ -192,8 +192,13 @@ export default async function StudentDashboard() {
               </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-xl font-bold text-white leading-tight">{avgElo}</p>
-              <p className="text-[11px] text-gray-400 truncate">Avg Elo</p>
+              <p className="text-xl font-bold text-white leading-tight">
+                {avgElo}
+                {mathElo !== null && <span className="text-sm font-semibold text-accent-green"> · {mathElo}</span>}
+              </p>
+              <p className="text-[11px] text-gray-400 truncate">
+                {mathElo !== null ? "R&W · Math Elo" : "Avg Elo"}
+              </p>
             </div>
           </div>
         </div>
@@ -251,11 +256,20 @@ export default async function StudentDashboard() {
       </div>
 
       {/* Category Breakdown — collapsed by default */}
-      {categoryStats && categoryStats.length > 0 && (
+      {verbalStats.length > 0 && (
         <CategoryBreakdown
-          stats={categoryStats}
+          title={mathStats.length > 0 ? "Reading & Writing" : "Category Performance"}
+          stats={verbalStats}
           avgTimes={avgTimes}
-          overallAvgSeconds={overallAvgSeconds}
+          overallAvgSeconds={avgSecondsFor("verbal")}
+        />
+      )}
+      {mathStats.length > 0 && (
+        <CategoryBreakdown
+          title="Math"
+          stats={mathStats}
+          avgTimes={avgTimes}
+          overallAvgSeconds={avgSecondsFor("math")}
         />
       )}
 

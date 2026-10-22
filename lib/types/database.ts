@@ -39,6 +39,11 @@ export interface Question {
   difficulty_rating: number; // Elo-scale 300–800
   generated_by: string; // "gemini" etc.
   created_at: string;
+  subject: "verbal" | "math";
+  /** "mcq" = A-D choices; "spr" = math grid-in: choices is [] and the student types the answer. */
+  answer_format: "mcq" | "spr";
+  /** spr only: every accepted form, graded by lib/math-answer.ts. */
+  accepted_answers: string[] | null;
 }
 
 export interface Session {

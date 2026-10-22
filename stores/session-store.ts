@@ -1,9 +1,12 @@
 import { create } from "zustand";
 import type { Question } from "@/lib/types/database";
+import type { Subject } from "@/lib/constants";
 
 interface SessionState {
   sessionId: string | null;
   isActive: boolean;
+  /** Reading & Writing or Math — fixed for the life of a session. */
+  subject: Subject;
   blockSeconds: number; // seconds elapsed in current 15-min block
   totalQuestions: number;
   correctCount: number;
@@ -20,9 +23,11 @@ interface SessionState {
   lastAnswerCorrect: boolean | null;
   lastCorrectAnswer: string | null;
   lastExplanations: Record<string, string> | null;
+  /** Grid-in questions only: every accepted form of the answer. */
+  lastAcceptedAnswers: string[] | null;
 
   // Actions
-  startSession: (sessionId: string) => void;
+  startSession: (sessionId: string, subject: Subject) => void;
   endSession: () => void;
   setCurrentQuestion: (
     question: Question | null,
@@ -31,7 +36,8 @@ interface SessionState {
   recordAnswer: (
     correct: boolean,
     correctAnswer: string,
-    explanations: Record<string, string>
+    explanations: Record<string, string>,
+    acceptedAnswers?: string[] | null
   ) => void;
   dismissFeedback: () => void;
   tickBlock: () => void;
@@ -43,6 +49,7 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set) => ({
   sessionId: null,
   isActive: false,
+  subject: "verbal",
   blockSeconds: 0,
   totalQuestions: 0,
   correctCount: 0,
@@ -53,10 +60,12 @@ export const useSessionStore = create<SessionState>((set) => ({
   lastAnswerCorrect: null,
   lastCorrectAnswer: null,
   lastExplanations: null,
+  lastAcceptedAnswers: null,
 
-  startSession: (sessionId) =>
+  startSession: (sessionId, subject) =>
     set({
       sessionId,
+      subject,
       isActive: true,
       blockSeconds: 0,
       totalQuestions: 0,
@@ -78,7 +87,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setCurrentQuestion: (question, choiceMap) =>
     set({ currentQuestion: question, currentChoiceMap: choiceMap ?? null }),
 
-  recordAnswer: (correct, correctAnswer, explanations) =>
+  recordAnswer: (correct, correctAnswer, explanations, acceptedAnswers = null) =>
     set((state) => ({
       totalQuestions: state.totalQuestions + 1,
       correctCount: state.correctCount + (correct ? 1 : 0),
@@ -86,6 +95,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       lastAnswerCorrect: correct,
       lastCorrectAnswer: correctAnswer,
       lastExplanations: explanations,
+      lastAcceptedAnswers: acceptedAnswers,
     })),
 
   dismissFeedback: () =>

@@ -1,6 +1,6 @@
 import type { Db } from "@/lib/db";
 import type { Question } from "@/lib/types/database";
-import { DSAT_CATEGORIES, type DsatCategory } from "@/lib/constants";
+import { categoriesFor, type Subject } from "@/lib/constants";
 
 interface CategoryStat {
   category: string;
@@ -24,8 +24,9 @@ interface CategoryStat {
  * Missed questions still come back — via spaced repetition, which is
  * tier 1 of the cascade and unaffected by this.
  */
-export function pickTargetCategory(): DsatCategory {
-  return DSAT_CATEGORIES[Math.floor(Math.random() * DSAT_CATEGORIES.length)];
+export function pickTargetCategory(subject: Subject = "verbal"): string {
+  const categories = categoriesFor(subject);
+  return categories[Math.floor(Math.random() * categories.length)];
 }
 
 /**
@@ -57,13 +58,21 @@ export function pickTargetCategory(): DsatCategory {
  * session all ten categories come up in roughly equal measure. Elo is
  * still per-category and still sets the difficulty window, so the
  * *level* adapts even though the *topic* doesn't.
+ *
+ * **Every tier is scoped to one subject** (Reading & Writing or Math,
+ * `opts.subject`, default verbal) — a math session never serves a
+ * passage question, and spaced-repetition reviews only come back in the
+ * track they were missed in. Elo averages likewise only use that
+ * subject's categories.
  */
 export async function selectNextQuestion(
   supabase: Db,
   studentId: string,
   currentSessionId?: string,
-  opts?: { allowRepeats?: boolean }
+  opts?: { allowRepeats?: boolean; subject?: Subject }
 ): Promise<Question | null> {
+  const subject: Subject = opts?.subject ?? "verbal";
+  const subjectCategories = categoriesFor(subject);
   // Get ALL question IDs this student has ever answered. Paged: PostgREST
   // caps any single response at 1000 rows, and an active student crosses
   // that after a few months — unpaged, older answers silently drop out of
@@ -90,7 +99,7 @@ export async function selectNextQuestion(
     sessionAnsweredIds = new Set((sessionAnswered ?? []).map((a: { question_id: string }) => a.question_id));
   }
 
-  // 1. Check for spaced repetition items due today
+  // 1. Check for spaced repetition items due today, in this subject.
   const today = new Date().toISOString().split("T")[0];
   const { data: srItems } = await supabase
     .from("spaced_repetition")
@@ -98,7 +107,7 @@ export async function selectNextQuestion(
     .eq("student_id", studentId)
     .lte("next_review_date", today)
     .order("next_review_date", { ascending: true })
-    .limit(5);
+    .limit(20);
 
   if (srItems && srItems.length > 0) {
     // Pick one not answered this session
@@ -108,7 +117,8 @@ export async function selectNextQuestion(
           .from("questions")
           .select("*")
           .eq("id", sr.question_id)
-          .single();
+          .eq("subject", subject)
+          .maybeSingle();
         if (question) return question as Question;
       }
     }
@@ -126,18 +136,20 @@ export async function selectNextQuestion(
 
   // Overall average Elo centres the difficulty window for the
   // any-category fallback tiers.
+  const subjectStats = ((stats ?? []) as CategoryStat[]).filter((s) =>
+    subjectCategories.includes(s.category)
+  );
   let avgElo = 500;
-  if (stats && stats.length > 0) {
+  if (subjectStats.length > 0) {
     avgElo = Math.round(
-      (stats as CategoryStat[]).reduce((sum, s) => sum + s.elo_rating, 0) /
-        stats.length
+      subjectStats.reduce((sum, s) => sum + s.elo_rating, 0) / subjectStats.length
     );
   }
 
   // Roll a category for this question. Uniform across all ten, so
   // coverage is even; the band below is what adapts to skill.
-  const targetCategory = pickTargetCategory();
-  const targetStat = (stats as CategoryStat[] | null)?.find(
+  const targetCategory = pickTargetCategory(subject);
+  const targetStat = subjectStats.find(
     (s) => s.category === targetCategory
   );
   // No stats row yet means the student has never attempted this
@@ -181,7 +193,7 @@ export async function selectNextQuestion(
   tiers.push({});
 
   for (const filters of tiers) {
-    const q = await findUnseen(supabase, answeredIds, sessionAnsweredIds, filters);
+    const q = await findUnseen(supabase, answeredIds, sessionAnsweredIds, { ...filters, subject });
     if (q) return q;
   }
 
@@ -194,7 +206,7 @@ export async function selectNextQuestion(
         supabase,
         answeredIds,
         sessionAnsweredIds,
-        filters,
+        { ...filters, subject },
         true
       );
       if (q) return q;
@@ -214,6 +226,7 @@ async function findUnseen(
     eloMax?: number;
     /** When true, restrict to authentic College Board questions. */
     cbOnly?: boolean;
+    subject?: Subject;
   },
   /**
    * When true, serve already-answered questions (still never repeats
@@ -234,6 +247,7 @@ async function findUnseen(
     let query = supabase
       .from("questions")
       .select("id")
+      .eq("subject", filters.subject ?? "verbal")
       .order("id")
       .range(from, from + PAGE - 1);
 

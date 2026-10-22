@@ -13,6 +13,42 @@ export const DSAT_CATEGORIES = [
 
 export type DsatCategory = (typeof DSAT_CATEGORIES)[number];
 
+// SAT Math reports by these four domains, and College Board's question bank
+// is organised the same way (domain codes H / P / Q / S). Each is a category
+// with its own Elo, just like the ten Reading & Writing skills above. They
+// are coarser than the verbal categories on purpose: CB's 19 math skills
+// would leave each one too few answers for its Elo to mean anything.
+export const MATH_CATEGORIES = [
+  "Algebra",
+  "Advanced Math",
+  "Problem-Solving & Data Analysis",
+  "Geometry & Trigonometry",
+] as const;
+
+export type MathCategory = (typeof MATH_CATEGORIES)[number];
+
+/** "verbal" = Reading & Writing (DSAT_CATEGORIES); "math" = MATH_CATEGORIES. */
+export const SUBJECTS = ["verbal", "math"] as const;
+export type Subject = (typeof SUBJECTS)[number];
+
+export const SUBJECT_LABELS: Record<Subject, string> = {
+  verbal: "Reading & Writing",
+  math: "Math",
+};
+
+export function categoriesFor(subject: Subject): readonly string[] {
+  return subject === "math" ? MATH_CATEGORIES : DSAT_CATEGORIES;
+}
+
+export function subjectOfCategory(category: string): Subject {
+  return (MATH_CATEGORIES as readonly string[]).includes(category) ? "math" : "verbal";
+}
+
+/** Coerce untrusted input (query string, request body) to a subject. */
+export function parseSubject(value: unknown): Subject {
+  return value === "math" ? "math" : "verbal";
+}
+
 // Per-question earning rates (minutes of gaming per question)
 export const EARNING_RATES = {
   correctHard: 0.75,    // correct + difficulty >= 600

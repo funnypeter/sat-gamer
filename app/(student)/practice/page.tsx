@@ -6,17 +6,20 @@ import QuestionCard from "@/components/student/QuestionCard";
 import FeedbackOverlay from "@/components/student/FeedbackOverlay";
 import QuestionStopwatch from "@/components/student/QuestionStopwatch";
 import { remapExplanationsToDisplayed } from "@/lib/cb-rationale";
+import { SUBJECT_LABELS, type Subject } from "@/lib/constants";
 
 export default function PracticePage() {
   const {
     sessionId,
     isActive,
+    subject,
     currentQuestion,
     currentChoiceMap: choiceMap,
     showFeedback,
     lastAnswerCorrect,
     lastCorrectAnswer,
     lastExplanations,
+    lastAcceptedAnswers,
     totalQuestions,
     correctCount,
     startSession,
@@ -56,8 +59,9 @@ export default function PracticePage() {
       // and answerable — that re-records it as a duplicate attempt.
       setCurrentQuestion(null);
       setSelectedAnswer(null);
-      const params = sessionId ? `?sessionId=${sessionId}` : "";
-      const res = await fetch(`/api/questions/next${params}`);
+      const params = new URLSearchParams({ subject });
+      if (sessionId) params.set("sessionId", sessionId);
+      const res = await fetch(`/api/questions/next?${params}`);
       if (!res.ok) {
         setError("Failed to load the next question.");
         return;
@@ -84,28 +88,41 @@ export default function PracticePage() {
     } catch {
       setError("Failed to load question.");
     }
-  }, [setCurrentQuestion, sessionId]);
+  }, [setCurrentQuestion, sessionId, subject]);
 
-  async function handleStart() {
+  async function handleStart(chosen: Subject) {
     setLoading(true);
     setError(null);
     setSessionEarned(0);
 
     try {
-      const res = await fetch("/api/sessions/start", { method: "POST" });
+      const res = await fetch("/api/sessions/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: chosen }),
+      });
       if (!res.ok) { setError("Failed to start session"); return; }
 
       const data = await res.json();
-      startSession(data.sessionId);
+      startSession(data.sessionId, chosen);
       setTimeEarnedToday(data.minutesEarnedToday ?? 0);
       setEarnedThisWeek(data.minutesEarnedToday ?? 0);
-      await fetchNextQuestion();
+      // The first question is fetched by the effect below once the store
+      // holds the new session + subject (this closure still has the old ones).
     } catch {
       setError("Failed to start session");
     } finally {
       setLoading(false);
     }
   }
+
+  // Load the first question once a session (and its subject) is in the store.
+  useEffect(() => {
+    if (isActive && sessionId && !currentQuestion && !showFeedback) {
+      fetchNextQuestion();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, sessionId]);
 
   async function handleAnswer(answer: string) {
     if (submitting || !sessionId || !currentQuestion) return;
@@ -162,10 +179,11 @@ export default function PracticePage() {
           choiceMap,
         );
       }
-      recordAnswer(data.isCorrect, displayedCorrect, displayedExplanations);
+      recordAnswer(data.isCorrect, displayedCorrect, displayedExplanations, data.acceptedAnswers ?? null);
 
-      // Prefetch more questions in background after first answer
-      if (totalQuestions === 0) {
+      // Prefetch more questions in background after first answer. Gemini
+      // only writes Reading & Writing questions; math is College Board only.
+      if (totalQuestions === 0 && subject === "verbal") {
         fetch("/api/questions/prefetch", { method: "POST" }).catch(() => {});
       }
 
@@ -215,7 +233,7 @@ export default function PracticePage() {
           </div>
           <h2 className="text-2xl font-bold text-white">Ready to Practice?</h2>
           <p className="mt-2 text-gray-400">
-            Answer questions to earn gaming time. Every question counts!
+            Pick a section. Answer questions to earn gaming time. Every question counts!
           </p>
         </div>
 
@@ -225,9 +243,27 @@ export default function PracticePage() {
           </div>
         )}
 
-        <button onClick={handleStart} disabled={loading} className="btn-primary text-lg px-10 py-4">
-          {loading ? "Starting..." : "Start Practice"}
-        </button>
+        <div className="grid w-full grid-cols-2 gap-3">
+          <button
+            onClick={() => handleStart("verbal")}
+            disabled={loading}
+            className="card-glass flex flex-col items-center gap-2 p-5 transition-colors hover:border-accent-blue/50 disabled:opacity-50"
+          >
+            <span className="text-3xl" aria-hidden>📖</span>
+            <span className="font-bold text-white">Reading &amp; Writing</span>
+            <span className="text-xs text-gray-400">Passages, grammar, vocab in context</span>
+          </button>
+          <button
+            onClick={() => handleStart("math")}
+            disabled={loading}
+            className="card-glass flex flex-col items-center gap-2 p-5 transition-colors hover:border-accent-green/50 disabled:opacity-50"
+          >
+            <span className="text-3xl" aria-hidden>➗</span>
+            <span className="font-bold text-white">Math</span>
+            <span className="text-xs text-gray-400">Algebra, functions, data, geometry</span>
+          </button>
+        </div>
+        {loading && <p className="text-sm text-gray-400 animate-pulse">Starting...</p>}
       </div>
     );
   }
@@ -240,6 +276,7 @@ export default function PracticePage() {
       {/* Session stats bar */}
       <div className="flex items-center justify-between card-glass px-4 py-3">
         <div className="flex items-center gap-4 text-sm">
+          <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs font-semibold text-gray-300">{SUBJECT_LABELS[subject]}</span>
           <span className="text-white font-semibold">{totalQuestions} <span className="text-gray-400 font-normal">answered</span></span>
           <span className="text-accent-green font-semibold">{accuracy}%</span>
         </div>
@@ -295,10 +332,11 @@ export default function PracticePage() {
           <QuestionCard
             question={currentQuestion}
             onAnswer={(answer) => setSelectedAnswer(answer)}
+            onSubmit={() => selectedAnswer && handleAnswer(selectedAnswer)}
             selectedAnswer={selectedAnswer}
             disabled={submitting}
           />
-          {selectedAnswer && !submitting && (
+          {selectedAnswer?.trim() && !submitting && (
             <button
               onClick={() => handleAnswer(selectedAnswer)}
               className="btn-primary w-full text-lg"
@@ -323,6 +361,8 @@ export default function PracticePage() {
           selectedAnswer={selectedAnswer ?? ""}
           explanations={lastExplanations ?? {}}
           choices={currentQuestion?.choices ?? []}
+          answerFormat={currentQuestion?.answer_format ?? "mcq"}
+          acceptedAnswers={lastAcceptedAnswers}
           choiceMap={choiceMap}
           onNext={handleNext}
         />

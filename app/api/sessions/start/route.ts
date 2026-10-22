@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/db";
 import { createAdminClient } from "@/lib/db";
+import { parseSubject } from "@/lib/constants";
 
 export async function POST(request: Request) {
   try {
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
     // fall back to the default mode rather than throwing.
     const body = await request.json().catch(() => ({}));
     const mode = (body as { mode?: string }).mode === "vocab" ? "vocab" : "practice";
+    // Reading & Writing or Math for passage-style practice; vocab is verbal.
+    const subject = mode === "vocab" ? "verbal" : parseSubject((body as { subject?: string }).subject);
 
     // Abandon any active sessions
     const { data: activeSessions } = await admin
@@ -57,6 +60,7 @@ export async function POST(request: Request) {
         block_seconds: 0,
         status: "active",
         mode,
+        subject,
       })
       .select()
       .single();

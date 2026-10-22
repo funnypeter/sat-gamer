@@ -5,7 +5,7 @@
 /** jsonb columns: stored as TEXT, parsed on read, stringified on write. */
 export const JSON_COLUMNS: Record<string, readonly string[]> = {
   families: ["settings"],
-  questions: ["choices", "explanations"],
+  questions: ["choices", "explanations", "accepted_answers"],
   vocab_items: ["choices", "explanations"],
   notifications: ["data"],
 };

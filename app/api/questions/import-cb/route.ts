@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/db";
 import { createAdminClient } from "@/lib/db";
 import {
-  RW_DOMAINS,
+  ALL_DOMAINS,
   fetchQuestionIndex,
   fetchAllQuestionDetails,
-  type RwDomain,
+  type QbankDomain,
 } from "@/lib/collegeboard/qbank-client";
-import { transformQbankQuestion } from "@/lib/collegeboard/transform";
+import { transformQbank } from "@/lib/collegeboard/transform";
 
 // Each domain has 300-500 questions; with 5-way concurrency and a 200ms
 // inter-batch delay one domain takes ~25-40 seconds. Hobby plan caps at
@@ -15,7 +15,8 @@ import { transformQbankQuestion } from "@/lib/collegeboard/transform";
 export const maxDuration = 60;
 
 interface ImportBody {
-  domain?: RwDomain;
+  /** A Reading & Writing (INI/CAS/EOI/SEC) or Math (H/P/Q/S) domain. */
+  domain?: QbankDomain;
   /** When true, delete all existing collegeboard rows before importing. */
   purge?: boolean;
 }
@@ -67,27 +68,20 @@ export async function POST(request: Request) {
       return NextResponse.json({
         purged: !!body.purge,
         existingCount: existing?.length ?? 0,
-        domains: RW_DOMAINS,
-        nextStep: `POST again with { "domain": "${RW_DOMAINS[0]}" } to import the first domain`,
+        domains: ALL_DOMAINS,
+        nextStep: `POST again with { "domain": "${ALL_DOMAINS[0]}" } to import the first domain`,
       });
     }
 
-    if (!RW_DOMAINS.includes(domain)) {
+    if (!(ALL_DOMAINS as readonly string[]).includes(domain)) {
       return NextResponse.json({ error: "Invalid domain" }, { status: 400 });
     }
 
     // 1. Fetch the metadata index for this domain.
     const index = await fetchQuestionIndex(domain);
 
-    // 2. Skip questions already imported (by external_id encoded into a
-    //    deterministic question_text marker is fragile, so instead match
-    //    on the rationale text which is unique per CB question).
-    const { data: existingRows } = await admin
-      .from("questions")
-      .select("explanations")
-      .eq("generated_by", "collegeboard")
-      .eq("category", "Standard English Conventions"); // narrow but harmless
-    void existingRows; // simple skip-by-content dedupe is left to upsert layer below
+    // 2. Already-imported questions are skipped by the content_hash
+    //    upsert below, so re-running a domain is safe.
 
     // 3. Fetch full content for every question in this domain.
     const externalIds = index.map((q) => q.external_id);
@@ -107,7 +101,7 @@ export async function POST(request: Request) {
         missingIndex += 1;
         continue;
       }
-      const result = transformQbankQuestion(idx, d);
+      const result = transformQbank(idx, d);
       if (result.ok) {
         rows.push(result.question);
       } else {
@@ -156,7 +150,7 @@ export async function POST(request: Request) {
 
     // 6. Tell the caller which domain to do next.
     const nextDomain =
-      RW_DOMAINS[RW_DOMAINS.indexOf(domain) + 1] as RwDomain | undefined;
+      ALL_DOMAINS[ALL_DOMAINS.indexOf(domain) + 1] as QbankDomain | undefined;
 
     return NextResponse.json({
       domain,

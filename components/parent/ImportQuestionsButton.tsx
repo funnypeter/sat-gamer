@@ -7,6 +7,10 @@ const DOMAINS = [
   { code: "CAS", label: "Craft & Structure" },
   { code: "EOI", label: "Expression of Ideas" },
   { code: "SEC", label: "Standard English Conventions" },
+  { code: "H", label: "Math: Algebra" },
+  { code: "P", label: "Math: Advanced Math" },
+  { code: "Q", label: "Math: Problem-Solving & Data Analysis" },
+  { code: "S", label: "Math: Geometry & Trigonometry" },
 ] as const;
 
 type DomainCode = (typeof DOMAINS)[number]["code"];

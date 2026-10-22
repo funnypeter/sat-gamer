@@ -20,7 +20,7 @@ export async function POST() {
     // Random category, same coverage rule as the selector — prefetching
     // into the weakest three only would rebuild the bias the selector
     // dropped, since generated questions are what the pool falls back on.
-    const targetCategory: DsatCategory = pickTargetCategory();
+    const targetCategory = pickTargetCategory("verbal") as DsatCategory;
 
     const catStat = stats?.find((s: { category: string }) => s.category === targetCategory);
     const elo = catStat?.elo_rating ?? 500;

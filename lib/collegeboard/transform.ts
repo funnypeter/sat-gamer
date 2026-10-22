@@ -1,7 +1,9 @@
-import type { DsatCategory } from "@/lib/constants";
-import type {
-  QbankIndexEntry,
-  QbankQuestionDetail,
+import type { DsatCategory, MathCategory } from "@/lib/constants";
+import { replaceMfenced } from "@/lib/mathml";
+import {
+  isMathDomain,
+  type QbankIndexEntry,
+  type QbankQuestionDetail,
 } from "./qbank-client";
 
 /**
@@ -147,7 +149,11 @@ function cleanChoice(html: string): string {
 }
 
 export interface TransformedQuestion {
-  category: DsatCategory;
+  category: DsatCategory | MathCategory;
+  subject: "verbal" | "math";
+  answer_format: "mcq" | "spr";
+  /** spr only: every accepted form of the answer. */
+  accepted_answers: string[] | null;
   passage_text: string;
   question_text: string;
   choices: { label: string; text: string }[];
@@ -235,6 +241,137 @@ export function transformQbankQuestion(
         DIFFICULTY_LABEL_FALLBACK[index.difficulty] ??
         525,
       generated_by: "collegeboard",
+      subject: "verbal",
+      answer_format: "mcq",
+      accepted_answers: null,
     },
   };
+}
+
+// ── Math ────────────────────────────────────────────────────────────────
+
+const MATH_DOMAIN_TO_CATEGORY: Record<string, MathCategory> = {
+  H: "Algebra",
+  P: "Advanced Math",
+  Q: "Problem-Solving & Data Analysis",
+  S: "Geometry & Trigonometry",
+};
+
+/**
+ * Math content is MathML inside light HTML. Same span/underline clean-up as
+ * the verbal stimulus, plus: <mfenced> rewritten (Chrome doesn't render it),
+ * and the tab/newline indentation CB puts between MathML tags collapsed.
+ */
+function cleanMath(html: string): string {
+  return tightenMath(replaceMfenced(cleanStimulus(html)));
+}
+
+/**
+ * Drop the indentation between tags *inside* <math> only. Outside it, a
+ * space between two tags ("</em> <em>") is a real word space.
+ */
+function tightenMath(html: string): string {
+  return html.replace(/<math\b[\s\S]*?<\/math>/gi, (m) => m.replace(/>\s+</g, "><"));
+}
+
+/**
+ * Convert a College Board *math* question. Two formats:
+ *   - mcq: four choices, correct_answer is a letter, as for verbal.
+ *   - spr: "student-produced response" grid-in. No choices; correct_answer
+ *     lists every accepted form ("3/2", "1.5"), stored in accepted_answers
+ *     and graded by lib/math-answer.ts.
+ *
+ * Questions with a graph, diagram or picture are skipped: CB draws them as
+ * inline SVG or images (or flags them via ibn), and the sanitizer doesn't
+ * render either — the question would be unanswerable.
+ */
+export function transformQbankMathQuestion(
+  index: QbankIndexEntry,
+  detail: QbankQuestionDetail
+): TransformResult {
+  if (detail.type !== "mcq" && detail.type !== "spr") {
+    return { ok: false, reason: `unsupported_type:${detail.type}` };
+  }
+  if (index.ibn) return { ok: false, reason: "image_based_ibn" };
+
+  const everything =
+    (detail.stimulus ?? "") + (detail.stem ?? "") +
+    (detail.answerOptions ?? []).map((o) => o.content).join("");
+  if (/<svg\b|<figure\b|<img\b/i.test(everything)) {
+    return { ok: false, reason: "embedded_visual" };
+  }
+
+  const category = MATH_DOMAIN_TO_CATEGORY[index.primary_class_cd];
+  if (!category) return { ok: false, reason: `unknown_domain:${index.primary_class_cd}` };
+
+  const passage = cleanMath(detail.stimulus ?? "");
+  const stem = cleanMath(detail.stem ?? "");
+  if (!stem) return { ok: false, reason: "empty_stem" };
+
+  const difficulty_rating =
+    difficultyFromScoreBand(index.score_band_range_cd) ??
+    DIFFICULTY_LABEL_FALLBACK[index.difficulty] ??
+    525;
+  const rationale = cleanMath(detail.rationale ?? "");
+
+  if (detail.type === "spr") {
+    const accepted = (detail.correct_answer ?? [])
+      .map((a) => String(a).trim())
+      .filter(Boolean);
+    if (accepted.length === 0) return { ok: false, reason: "spr_no_answer" };
+    return {
+      ok: true,
+      question: {
+        category,
+        passage_text: passage,
+        question_text: stem,
+        choices: [],
+        correct_answer: accepted[0],
+        explanations: { answer: rationale },
+        difficulty_rating,
+        generated_by: "collegeboard",
+        subject: "math",
+        answer_format: "spr",
+        accepted_answers: accepted,
+      },
+    };
+  }
+
+  if (!detail.answerOptions || detail.answerOptions.length !== 4) {
+    return { ok: false, reason: `wrong_choice_count:${detail.answerOptions?.length ?? 0}` };
+  }
+  const letter = mapCorrectAnswerToLetter(detail.answerOptions, detail.correct_answer);
+  if (!letter) {
+    return { ok: false, reason: `correct_answer_unmappable:${JSON.stringify(detail.correct_answer)}` };
+  }
+
+  const explanations: Record<string, string> = { A: "", B: "", C: "", D: "" };
+  explanations[letter] = rationale;
+
+  return {
+    ok: true,
+    question: {
+      category,
+      passage_text: passage,
+      question_text: stem,
+      choices: detail.answerOptions.map((opt, i) => ({
+        label: ["A", "B", "C", "D"][i],
+        text: tightenMath(cleanChoice(replaceMfenced(opt.content))),
+      })),
+      correct_answer: letter,
+      explanations,
+      difficulty_rating,
+      generated_by: "collegeboard",
+      subject: "math",
+      answer_format: "mcq",
+      accepted_answers: null,
+    },
+  };
+}
+
+/** Route a CB question to the verbal or math transform by its domain. */
+export function transformQbank(index: QbankIndexEntry, detail: QbankQuestionDetail): TransformResult {
+  return isMathDomain(index.primary_class_cd)
+    ? transformQbankMathQuestion(index, detail)
+    : transformQbankQuestion(index, detail);
 }

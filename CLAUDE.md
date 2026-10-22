@@ -1,8 +1,8 @@
 # SAT Gamer
 
-Digital SAT (DSAT) Reading & Writing prep app. Students earn gaming time by answering questions; parents oversee progress.
+Digital SAT (DSAT) prep app for both sections, Reading & Writing ("verbal") and Math. Students earn gaming time by answering questions; parents oversee progress.
 
-Two practice modes: **passage questions** (`/practice`) and **vocabulary drilling** (`/vocab`). They share the session, earning, and streak machinery but have separate content pipelines, separate progress tracking, and separate reporting.
+Two practice modes: **section questions** (`/practice`, where the student picks Reading & Writing or Math) and **vocabulary drilling** (`/vocab`). They share the session, earning, and streak machinery but have separate content pipelines, separate progress tracking, and separate reporting. See "Math" below for how the two sections share one question pipeline.
 
 ## Stack
 
@@ -134,6 +134,34 @@ Single-pass review (not full SM-2):
 - `FeedbackOverlay` calls `splitCbRationale()` (defined inline in that file) to break CB's monolithic "Choice X is the best answer... Choice Y is incorrect..." rationale into per-choice chunks at display time. Gemini explanations are already per-choice and pass through unchanged.
 - `QuestionCard` has defensive rendering for the meta-prompt bug via `isMetaPromptPassage()` from `lib/sanitize.ts` (see below).
 - `QuestionStopwatch` **freezes at submit** (`stopAt` prop, set from the same timestamp used for `timeSpentSeconds`). Server round-trip is not thinking time, and a clock that keeps running past submit reads as the app charging you for its own latency.
+
+## Math
+
+Math rides the passage-question pipeline end to end — same `questions` table, selector, Elo, spaced repetition, earning rates and weekly cap. What separates the sections:
+
+- **`questions.subject`** (`'verbal' | 'math'`) and **`sessions.subject`**. The student picks a section on `/practice`; `/api/sessions/start` stores it on the session, and `/api/questions/next` reads it back from the session row (the `?subject=` param is only a fallback). `selectNextQuestion(..., { subject })` scopes **every** tier to that subject, including spaced repetition, so a miss comes back in the section it was missed in. `sessions.mode` stays `'practice'` for both; don't widen its CHECK (SQLite can't alter a CHECK without rebuilding the table).
+- **Categories** are the four SAT Math domains (`MATH_CATEGORIES`: Algebra, Advanced Math, Problem-Solving & Data Analysis, Geometry & Trigonometry), mapped from CB's domain code H/P/Q/S. Deliberately coarser than the ten verbal skills — CB's 19 math skills would leave each Elo with too few answers to mean anything. `pickTargetCategory(subject)` rolls uniformly within the section. Use `categoriesFor()` / `subjectOfCategory()` from `lib/constants.ts` rather than `DSAT_CATEGORIES` anywhere both sections matter.
+- **Reporting keeps the sections apart.** Elo averages and category breakdowns are per section (student dashboard, parent detail page). One blended Elo would describe neither skill.
+- **Source**: College Board only, via the same importer (`/api/questions/import-cb` with domains `H`/`P`/`Q`/`S`, `test: 2` on CB's API; `transformQbankMathQuestion` in `lib/collegeboard/transform.ts`). **No Gemini generation for math** — a model-written math item with a wrong key is worse than a repeat, and the prompts/schema are passage-shaped. When a math student exhausts the bank, `/api/questions/next` goes straight to repeats; the client only calls `/api/questions/prefetch` (verbal generation) for verbal sessions.
+- **Graphs and diagrams are skipped** at import (inline SVG / `<figure>` / `<img>`, or CB's `ibn` flag): the sanitizer doesn't render them, so the question would be unanswerable. That's about 40% of CB's math bank (Oct 2026: 1,137 of 1,925 imported). `ibn` questions also fail CB's `get-question` call, so they show up as `failedFetches` in the import result, not as rejections. Supporting them means allowing a vetted SVG subset in `lib/sanitize.ts`.
+
+### MathML
+
+CB writes all math as MathML, rendered natively by the browser.
+
+- `lib/sanitize.ts` allows the MathML Core elements and only presentation attributes (`alttext`, `mathvariant`, …); everything else is stripped from every tag, HTML or MathML.
+- **`<mfenced>` must be rewritten** — MathML Core dropped it, and Chrome renders its contents with the parentheses silently missing ("f(x)" → "fx", "(3, 4)" → "34"). `replaceMfenced()` in `lib/mathml.ts` converts it to `<mrow><mo>(</mo>…<mo>)</mo></mrow>`, keeping `open`/`close`/`separators`. The importer stores the rewritten form, and the sanitizer applies it again defensively.
+- Content that reaches Gemini (the AI tutor) goes through `mathToText()`, which swaps each `<math>` for its `alttext`. Stripping tags alone runs numbers together ("3/4" → "34").
+- Question HTML renders inside `.question-html` (styles in `app/globals.css`), as a `div` not a `p` — math stems can contain tables.
+
+### Grid-ins (`answer_format = 'spr'`)
+
+CB's "student-produced response" questions have no choices; the student types the answer.
+
+- Stored with `choices = []`, every accepted form in **`accepted_answers`** (JSON, e.g. `["3/2","1.5"]`), the first one in `correct_answer` for display, and CB's worked solution in `explanations.answer`.
+- Graded by **`isSprAnswerCorrect()`** in `lib/math-answer.ts`: an exact match to an accepted form, or the same *exact* numeric value ("6/4" = "3/2" = "1.50"). No tolerance — on the real test 0.67 isn't accepted for 2/3, and CB already lists the rounded/truncated decimals it does accept.
+- `accepted_answers` is the answer key: `/api/questions/next` never sends it (see `stripAnswer`); `/api/sessions/answer` returns it with the result.
+- No `choiceMap`: grid-ins are never shuffled, on SR reviews or repeats.
 
 ## Vocabulary mode
 

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/db";
 import { createAdminClient } from "@/lib/db";
-import { DSAT_CATEGORIES } from "@/lib/constants";
+import { DSAT_CATEGORIES, MATH_CATEGORIES, subjectOfCategory } from "@/lib/constants";
 import Link from "next/link";
 import ResetStudentButton from "@/components/parent/ResetStudentButton";
 import { effectiveStreak } from "@/lib/engine/streak";
@@ -78,11 +78,20 @@ export default async function StudentDetailPage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const totalCorrect = (stats ?? []).reduce((sum: number, s: any) => sum + Number(s.total_correct || 0), 0);
   const overallAccuracy = totalAttempted > 0 ? Math.round((totalCorrect / totalAttempted) * 100) : 0;
+  // Reading & Writing and Math Elos measure different skills — average each
+  // section on its own rather than blending them into one number.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const avgElo = (stats ?? []).length > 0 ? Math.round((stats ?? []).reduce((sum: number, s: any) => sum + Number(s.elo_rating || 500), 0) / (stats ?? []).length) : 500;
+  const sectionElo = (subject: "verbal" | "math") => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const list = (stats ?? []).filter((s: any) => subjectOfCategory(s.category) === subject);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return list.length > 0 ? Math.round(list.reduce((sum: number, s: any) => sum + Number(s.elo_rating || 500), 0) / list.length) : null;
+  };
+  const avgElo = sectionElo("verbal") ?? 500;
+  const mathElo = sectionElo("math");
 
-  // Full category breakdown
-  const categoryBreakdown = DSAT_CATEGORIES.map((cat) => {
+  // Full category breakdown, Reading & Writing then Math
+  const categoryBreakdown = [...DSAT_CATEGORIES, ...MATH_CATEGORIES].map((cat) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stat = (stats ?? []).find((s: any) => s.category === cat);
     const attempted = stat ? Number(stat.total_attempted) : 0;
@@ -92,6 +101,7 @@ export default async function StudentDetailPage({
     const avgRow = (avgTimes ?? []).find((t: any) => t.category === cat);
     return {
       category: cat,
+      subject: subjectOfCategory(cat),
       accuracy,
       eloRating: stat ? Number(stat.elo_rating) : 500,
       attempted,
@@ -181,8 +191,13 @@ export default async function StudentDetailPage({
             <p className="text-xs text-gray-500 uppercase tracking-wider">Accuracy</p>
           </div>
           <div className="text-center p-3 rounded-lg bg-white/5">
-            <p className="text-2xl font-bold text-purple-400">{avgElo}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wider">Avg Elo</p>
+            <p className="text-2xl font-bold text-purple-400">
+              {avgElo}
+              {mathElo !== null && <span className="text-base text-accent-green"> · {mathElo}</span>}
+            </p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider">
+              {mathElo !== null ? "R&W · Math Elo" : "Avg Elo"}
+            </p>
           </div>
           <div className="text-center p-3 rounded-lg bg-white/5">
             <div className="flex items-center justify-center gap-1">
@@ -200,8 +215,13 @@ export default async function StudentDetailPage({
       <section>
         <h3 className="mb-4 text-lg font-semibold text-white">Category Breakdown</h3>
         <div className="card-glow p-5 space-y-3">
-          {categoryBreakdown.map((cat) => (
+          {categoryBreakdown.map((cat, i) => (
             <div key={cat.category} className="space-y-1.5">
+              {(i === 0 || categoryBreakdown[i - 1].subject !== cat.subject) && (
+                <p className={`text-xs font-semibold uppercase tracking-wider text-gray-400 ${i > 0 ? "pt-3" : ""}`}>
+                  {cat.subject === "math" ? "Math" : "Reading & Writing"}
+                </p>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-300 truncate mr-4">{cat.category}</span>
                 <div className="flex items-center gap-3 shrink-0">

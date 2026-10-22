@@ -50,6 +50,8 @@ export default async function ReviewPage() {
                 correctAnswer={q?.correct_answer ?? ""}
                 answerGiven={m.answer_given}
                 explanations={q?.explanations ?? null}
+                answerFormat={q?.answer_format ?? "mcq"}
+                acceptedAnswers={q?.accepted_answers ?? null}
               />
             );
           })}

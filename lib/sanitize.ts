@@ -1,12 +1,52 @@
+import { replaceMfenced } from "@/lib/mathml";
+
+const HTML_TAGS = [
+  "u", "b", "i", "em", "strong", "br", // inline formatting
+  "p", // College Board passages wrap each paragraph in <p>
+  "sup", "sub", // footnote markers, chemical formulas
+  "table", "thead", "tbody", "tr", "th", "td", "caption", // CB data tables
+];
+
+// MathML Core presentation elements — College Board writes all math as MathML.
+const MATHML_TAGS = [
+  "math", "mrow", "mi", "mn", "mo", "mtext", "mspace", "ms",
+  "mfrac", "msqrt", "mroot", "msup", "msub", "msubsup",
+  "munder", "mover", "munderover", "mmultiscripts", "mprescripts", "none",
+  "mtable", "mtr", "mtd", "mstyle", "mpadded", "mphantom", "menclose",
+  "semantics", "annotation",
+];
+
+const ALLOWED_TAGS = new Set([...HTML_TAGS, ...MATHML_TAGS]);
+
+// Presentation-only attributes; anything else (style, on*, href, src, ...)
+// is dropped even on an allowed tag.
+const ALLOWED_ATTRS = new Set([
+  "alttext", "display", "mathvariant", "displaystyle", "scriptlevel",
+  "fence", "separator", "stretchy", "symmetric", "largeop", "movablelimits",
+  "accent", "accentunder", "form", "lspace", "rspace", "linethickness",
+  "notation", "columnalign", "rowalign", "colspan", "rowspan", "scope",
+]);
+
+function filterAttrs(attrs: string): string {
+  const kept: string[] = [];
+  const re = /([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(attrs))) {
+    const name = m[1].toLowerCase();
+    const value = m[3] ?? m[4] ?? "";
+    if (ALLOWED_ATTRS.has(name) && !/[<>"`]|javascript:/i.test(value)) {
+      kept.push(`${name}="${value}"`);
+    }
+  }
+  return kept.length ? " " + kept.join(" ") : "";
+}
+
 /**
  * Shared HTML sanitizer for question content (passages, stems, choices,
- * explanations). Allows only the formatting tags we render safely:
- *
- *   - u, b, i, em, strong, br : inline formatting
- *   - p                       : College Board passages wrap each paragraph in <p>
- *   - sup, sub                : footnote markers, chemical formulas
- *
- * Anything else (script, style, iframe, span, div, ...) is stripped.
+ * explanations). Keeps only HTML_TAGS and MATHML_TAGS above, each with only
+ * presentation attributes; every other tag (script, style, iframe, span,
+ * div, svg, ...) is stripped, keeping its text. Deprecated <mfenced> is
+ * rewritten first so math fences render (see lib/mathml.ts).
  *
  * Use with React's `dangerouslySetInnerHTML`. The sanitizer must be the
  * single source of truth — every component that renders question HTML
@@ -14,7 +54,18 @@
  */
 export function sanitizeHtml(html: string): string {
   if (!html) return "";
-  return html.replace(/<\/?(?!\/?(u|b|i|em|strong|br|p|sup|sub)\b)[^>]*>/gi, "");
+  const withFences = /<mfenced\b/i.test(html) ? replaceMfenced(html) : html;
+  return withFences
+    // Drop script/style blocks entirely, contents included.
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(\/?)([a-zA-Z][\w-]*)([^>]*)>/g, (_all, slash: string, tag: string, attrs: string) => {
+      const name = tag.toLowerCase();
+      if (!ALLOWED_TAGS.has(name)) return "";
+      if (slash) return `</${name}>`;
+      const selfClosing = /\/\s*$/.test(attrs);
+      return `<${name}${filterAttrs(attrs)}${selfClosing ? " /" : ""}>`;
+    });
 }
 
 /**

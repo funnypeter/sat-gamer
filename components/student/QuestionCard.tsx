@@ -8,8 +8,11 @@ interface QuestionCardProps {
   question: Pick<
     Question,
     "id" | "category" | "passage_text" | "question_text" | "choices"
-  > & { source?: string };
+  > &
+    Partial<Pick<Question, "subject" | "answer_format">> & { source?: string };
   onAnswer: (answer: string) => void;
+  /** Grid-ins: Enter in the answer box submits. */
+  onSubmit?: () => void;
   selectedAnswer: string | null;
   disabled: boolean;
 }
@@ -17,11 +20,18 @@ interface QuestionCardProps {
 export default function QuestionCard({
   question,
   onAnswer,
+  onSubmit,
   selectedAnswer,
   disabled,
 }: QuestionCardProps) {
   const [eliminated, setEliminated] = useState<Set<string>>(new Set());
-  const passageIsBroken = isMetaPromptPassage(question.passage_text);
+  const isMath = question.subject === "math";
+  const isGridIn = question.answer_format === "spr";
+  // Most math questions have no passage at all — that's normal, not the
+  // meta-prompt bug, so the "missing passage" notice is verbal-only.
+  const passageIsBroken = !isMath && isMetaPromptPassage(question.passage_text);
+  const passageHtml = sanitizeHtml(question.passage_text ?? "");
+  const hasPassage = passageHtml.replace(/<[^>]*>/g, "").trim().length > 0 || /<(table|math)/.test(passageHtml);
 
   function toggleEliminate(label: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -62,26 +72,55 @@ export default function QuestionCard({
             stem alone, or skip it.
           </p>
         </div>
-      ) : (
+      ) : hasPassage ? (
         <div className="card-glass p-4">
-          <p
-            className="text-base leading-relaxed text-gray-100"
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(question.passage_text) }}
+          <div
+            className="question-html text-base leading-relaxed text-gray-100"
+            dangerouslySetInnerHTML={{ __html: passageHtml }}
           />
         </div>
-      )}
+      ) : null}
 
       {/* Question. If the passage is broken, the meta-prompt stored in
           passage_text is actually the real question — prefer it over the
           (usually duplicate) question_text. */}
-      <p
-        className="text-lg font-semibold text-white leading-relaxed"
+      <div
+        className="question-html text-lg font-semibold text-white leading-relaxed"
         dangerouslySetInnerHTML={{
           __html: sanitizeHtml(
             passageIsBroken ? question.passage_text : question.question_text
           ),
         }}
       />
+
+      {/* Grid-in (math "student-produced response"): the student types it. */}
+      {isGridIn && (
+        <div className="card-glass p-4 space-y-2">
+          <label htmlFor={`gridin-${question.id}`} className="label">
+            Your answer
+          </label>
+          <input
+            id={`gridin-${question.id}`}
+            type="text"
+            inputMode="text"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            maxLength={7}
+            value={selectedAnswer ?? ""}
+            onChange={(e) => onAnswer(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && selectedAnswer?.trim()) onSubmit?.();
+            }}
+            disabled={disabled}
+            className="input-field text-center text-2xl tracking-wider"
+            placeholder="e.g. 12, -3/4, .75"
+          />
+          <p className="text-xs text-gray-400">
+            Enter a number, fraction, or decimal, like on the SAT grid-in.
+          </p>
+        </div>
+      )}
 
       {/* Answer choices */}
       <div className="space-y-3">
