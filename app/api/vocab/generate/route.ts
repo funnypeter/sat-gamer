@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import { VOCAB_WORDS, getVocabWord, VOCAB_TOTAL, type VocabWord } from "@/lib/vocab/word-list";
 import {
   generateItemsForWords,

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import Link from "next/link";
 
 export default async function ParentLayout({
@@ -16,10 +16,7 @@ export default async function ParentLayout({
   if (!user) redirect("/login");
 
   // Use admin client for data queries to avoid RLS recursion
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const admin = createAdminClient();
 
   const { data: profile } = await admin
     .from("users")
@@ -38,7 +35,7 @@ export default async function ParentLayout({
           SAT <span className="text-accent-blue">Gamer</span>
           <span className="ml-2 text-xs font-normal text-gray-400">Parent</span>
         </h1>
-        <a href="/login" className="text-sm text-gray-400 hover:text-white transition-colors">
+        <a href="/api/auth/logout" className="text-sm text-gray-400 hover:text-white transition-colors">
           Sign Out
         </a>
       </header>

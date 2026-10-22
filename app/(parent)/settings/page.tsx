@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import InviteCodeCard from "@/components/parent/InviteCodeCard";
 import ParentInviteCard from "@/components/parent/ParentInviteCard";
 import AvatarUpload from "@/components/shared/AvatarUpload";

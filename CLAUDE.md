@@ -6,12 +6,15 @@ Two practice modes: **passage questions** (`/practice`) and **vocabulary drillin
 
 ## Stack
 
-- **Next.js 14** (App Router) + **TypeScript** + **Tailwind**
-- **Supabase** (Postgres + RLS + auth) — schema in `supabase/migrations/`
-- **Google Gemini** for question generation (`@google/generative-ai`)
+- **Next.js 15** (App Router) + **TypeScript** + **Tailwind**, React 19
+- **Cloudflare Workers** via OpenNext (`@opennextjs/cloudflare`), live at **https://satgamer.pmansour.com** (Worker `sat-gamer`)
+- **D1** (SQLite) database `sat-gamer` — schema in `migrations/`; **R2** bucket `sat-gamer-avatars` for profile photos
+- Email + password auth on D1 (`lib/auth.ts`), cookie sessions
+- **Google Gemini** for question generation (`@google/generative-ai`); key is the Worker secret `GEMINI_API_KEY`
 - **Zustand** for client state
 - **Zod** for validation
-- Deployed on **Vercel**, with `master` as the deploy branch
+
+Moved off Vercel + Supabase in Oct 2026. `supabase/migrations/` is kept only as the history of the original Postgres schema — don't add to it.
 
 ## Repo layout
 
@@ -34,12 +37,16 @@ lib/
   engine/         elo.ts, question-selector.ts, streak.ts, time-calculator.ts
   vocab/          word-list.ts, select.ts, mastery.ts, distractors.ts,
                   generate.ts, prompts.ts, schema.ts, blank.ts
-  supabase/       server.ts (RLS), admin.ts (service role), browser client
+  db/             D1 query layer: index.ts (createClient/createAdminClient),
+                  query.ts (supabase-js-compatible builder), schema.ts (JSON/bool columns)
+  auth.ts         sessions, password hashing, sign in/out
+  signup.ts       shared account creation for signup/join/students-create
+  cf.ts           Cloudflare bindings (env(), d1())
   collegeboard/   College Board question importer
   constants.ts    DSAT_CATEGORIES, DIFFICULTY_BANDS, VOCAB_EARNING_RATES, VOCAB_MASTERY
   types/          database types
 stores/           Zustand stores (session-store, vocab-store)
-supabase/migrations/   numbered SQL migrations
+migrations/       numbered D1 migrations (wrangler)
 ```
 
 ## Question pipeline
@@ -62,7 +69,7 @@ There are **two question sources**, both insert into the same `questions` table:
     2. **Promote inline-style underlines to `<u>` tags.** CB marks the "Referenced Content" portion in Text Structure & Purpose questions in *two* different ways: (a) `<span role="region"><u>...</u></span>` which has a real `<u>` inside and survives the span-stripper, and (b) `<span style="text-decoration: underline;" ...>...</span>` which uses inline CSS with no `<u>` tag. We must convert (b) to `<u>...</u>` *before* stripping spans, otherwise questions asking about "the underlined sentence" become unanswerable.
     3. Strip remaining `<span>` wrappers but keep their inner content.
   - **Filter**: rejects image-based questions (non-empty `ibn` field) and non-mcq question types. Returns `{ ok: false, reason }` for diagnostics so the importer can tally rejection reasons.
-- `app/api/questions/import-cb/route.ts` — parent-only route. POST `{}` returns the list of domains; POST `{domain: 'INI'|'CAS'|'EOI'|'SEC'}` imports one whole domain and returns `nextDomain` plus a `rejections` breakdown. POST `{purge: true}` first wipes existing CB rows. Bound to `maxDuration = 60` (Hobby plan limit) — one domain per call so it fits.
+- `app/api/questions/import-cb/route.ts` — parent-only route. POST `{}` returns the list of domains; POST `{domain: 'INI'|'CAS'|'EOI'|'SEC'}` imports one whole domain and returns `nextDomain` plus a `rejections` breakdown. POST `{purge: true}` first wipes existing CB rows. One domain per call (`maxDuration` is a leftover from Vercel's limit; Workers has no wall-clock cap while the client is connected, but one-domain chunks keep each request short).
 - `components/parent/ImportQuestionsButton.tsx` — UI that iterates the four domains sequentially, shows per-domain progress + rejection counts, and exposes a "Delete existing first" checkbox.
 - **Do not** revive PineSAT/OpenSAT (`pinesat.com/api/questions`). It mixes real CB questions with AI-generated `random_id_*` content, returns the literal string `"null"` for missing passages, and strips all underline markers. The dedicated client was deleted.
 
@@ -199,27 +206,31 @@ Gemini occasionally fills `passage_text` with a meta-description ("The author of
 
 1. **Schema** (`lib/gemini/schema.ts`): Zod refinements on `passage_text` reject meta-prompt patterns and trailing `?`. Rejected rows never reach the DB.
 2. **Renderer** (`components/student/QuestionCard.tsx`): `isMetaPromptPassage()` defensively detects bad rows already in the DB, hides the broken passage card, and renders the meta-prompt as the question stem with an amber "missing passage" notice.
-3. **Migration** (`supabase/migrations/003_purge_meta_prompt_questions.sql`): one-shot cleanup of bad rows already inserted.
+3. **Migration** (`supabase/migrations/003_purge_meta_prompt_questions.sql`, historical): one-shot cleanup of bad rows already inserted. A future cleanup would be a new D1 migration.
 
 Patterns matched: `the author of (this|the) passage`, `the (writer|author|speaker) (wants|aims|intends|seeks)`, `this passage (is about|describes|discusses|argues|explains)`, `what is the most likely reason`, `which choice best`, and any `passage_text` ending in `?`. If new variants leak through, add them to all three locations.
 
 ## Conventions
 
 - **HTML in passages**: `<u>` marks "underlined portions" referenced by questions (Standard English Conventions, Text Structure & Purpose). CB also wraps prose paragraphs in `<p>`. The shared sanitizer in `lib/sanitize.ts` is the single source of truth for the allowlist — every component that renders question HTML should import `sanitizeHtml` from there, never define its own.
-- **Two Supabase clients**: `lib/supabase/server.ts` for user-scoped (RLS-enforced) reads; `lib/supabase/admin.ts` for service-role inserts (used by `/api/questions/generate`, import-cb, and seed routes). Never use the admin client in user-facing reads.
-- **Migrations are numbered** (`001_`, `002_`, ...). Create new ones; never edit applied ones.
-- **Supabase migrations don't auto-deploy with Vercel.** Apply each new migration to the project (`pwyzlwpxevdnxktddfwl`) as part of the same task that writes it — via the Supabase MCP tools, `supabase db push`, or the dashboard. Don't hand the SQL back to the user to run. Numbered files in `supabase/migrations/` stay the source of truth; the remote's applied list (`list_migrations`) only goes back to `004` because `001`-`003` predate migration tracking.
+- **Data access goes through `lib/db`.** `createClient()` / `createAdminClient()` return the same D1 client with the supabase-js call shape (`.from().select().eq()...`, `{ data, error }`), so the code reads as it did on Supabase. It implements only the subset in use — see the header of `lib/db/query.ts`; write plain SQL with `d1()` rather than growing it.
+- **There is no RLS.** Every route resolves the caller with `auth.getUser()` and must filter by their id / family itself. Never trust a user or student id from the request body without checking family membership (see `/api/students/reset` for the pattern).
+- **SQLite types**: JSON columns are TEXT and booleans are 0/1 — `lib/db/schema.ts` lists them so reads come back as objects/booleans. Add new JSON/boolean columns there. Timestamps are ISO strings from `toISOString()` (string comparison == time comparison); `content_hash` is computed in code, not by the database.
+- **Migrations are numbered** (`0001_`, `0002_`, ...) in `migrations/`. Create new ones; never edit applied ones. Apply each new one to the remote as part of the task that writes it: `npx wrangler d1 migrations apply DB --remote`. Don't hand the SQL back to the user to run.
 - **The route at `/api/questions/next` must not duplicate selection logic** — it delegates to `selectNextQuestion()` and only handles Gemini fallback. If you need to change selection priority, change the selector, not the route.
 
 ## Scripts
 
-- `npm run dev` — Next.js dev server
-- `npm run build` — production build (Vercel runs this)
+- `npm run dev` — Next.js dev server (bindings come from `wrangler.jsonc`, local D1/R2; secrets in `.dev.vars`)
+- `npm run build` — Next.js build (also run by the deploy)
+- `npm run preview` — build and run the real Worker locally
+- `npm run deploy` — build and deploy to Cloudflare. Nothing auto-deploys from git; deploy after merging to `master`.
 - `npm run lint`
 
 ## Things to watch out for
 
-- The `app/api/questions/generate` route uses the **admin client** — it must remain auth-gated (currently checks `supabase.auth.getUser()`).
+- The `app/api/questions/generate` route writes shared content — it must remain auth-gated (currently checks `supabase.auth.getUser()`).
+- **Push notifications** are hand-rolled on WebCrypto in `lib/push.ts` (VAPID + aes128gcm). The `web-push` package doesn't run on Workers; don't reintroduce it.
 - `ON DELETE CASCADE` is set on `student_questions.question_id`, so deleting from `questions` cleans up dependent rows automatically.
 - DSAT categories are a closed set in `lib/constants.ts` — don't introduce new ones without updating prompts, the selector, and any UI that lists categories.
 - `/api/sessions/start` now reads a `{ mode }` body. The practice page posts no body at all, so the body parse must stay fault-tolerant (`.catch(() => ({}))`) or passage practice breaks.

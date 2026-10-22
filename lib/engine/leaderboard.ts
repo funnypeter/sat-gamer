@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/db";
 import { effectiveStreak } from "@/lib/engine/streak";
 import { startOfWeekInAppTimezone } from "@/lib/date";
 
@@ -24,7 +24,7 @@ export interface LeaderboardStudent {
  * data, so the parent dashboard doesn't have to duplicate fetches.
  */
 export async function buildLeaderboard(
-  admin: SupabaseClient,
+  admin: Db,
   familyStudents: Array<{ id: string; display_name: string }>
 ): Promise<LeaderboardStudent[]> {
   const studentIds = familyStudents.map((s) => s.id);

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import Link from "next/link";
 import { effectiveStreak } from "@/lib/engine/streak";
 
@@ -16,10 +16,7 @@ export default async function StudentLayout({
 
   if (!user) redirect("/login");
 
-  const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const admin = createAdminClient();
 
   const { data: profile } = await admin
     .from("users")

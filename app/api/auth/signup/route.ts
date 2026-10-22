@@ -1,5 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/db";
+import { createAccount, signupErrorResponse } from "@/lib/signup";
 
 function generateInviteCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/1/O/0 to avoid confusion
@@ -10,24 +11,20 @@ function generateInviteCode(): string {
   return code;
 }
 
+/** New parent: creates the family, the login, the profile, and signs in. */
 export async function POST(req: NextRequest) {
-  const { userId, email, displayName, familyName } = await req.json();
+  const { email, password, displayName, familyName } = await req.json().catch(() => ({}));
 
-  if (!userId || !email || !displayName || !familyName) {
+  if (!email || !password || !displayName || !familyName) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Use admin client to bypass RLS
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const admin = createAdminClient();
 
   // 1. Create family with invite code
-  const inviteCode = generateInviteCode();
-  const { data: family, error: familyError } = await supabase
+  const { data: family, error: familyError } = await admin
     .from("families")
-    .insert({ name: familyName, invite_code: inviteCode })
+    .insert({ name: familyName, invite_code: generateInviteCode() })
     .select()
     .single();
 
@@ -35,19 +32,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: familyError?.message || "Failed to create family" }, { status: 500 });
   }
 
-  // 2. Create user profile
-  const { error: userError } = await supabase.from("users").insert({
-    id: userId,
-    family_id: family.id,
-    role: "parent",
-    display_name: displayName,
-    email,
-  });
-
-  if (userError) {
-    // Clean up family if user creation fails
-    await supabase.from("families").delete().eq("id", family.id);
-    return NextResponse.json({ error: userError.message }, { status: 500 });
+  // 2. Login + parent profile
+  try {
+    await createAccount(
+      { email, password, displayName, familyId: family.id, role: "parent" },
+      { signIn: true }
+    );
+  } catch (err) {
+    // Clean up family if account creation fails
+    await admin.from("families").delete().eq("id", family.id);
+    const { error, status } = signupErrorResponse(err);
+    return NextResponse.json({ error }, { status });
   }
 
   return NextResponse.json({ familyId: family.id });

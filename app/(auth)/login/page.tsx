@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -11,7 +10,6 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -19,26 +17,19 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword(
-        { email, password }
-      );
+      const resp = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const result = await resp.json().catch(() => ({}));
 
-      if (authError) {
-        setError(authError.message);
+      if (!resp.ok) {
+        setError(result.error || "Login failed. Please try again.");
         return;
       }
 
-      if (!data.user) {
-        setError("Login failed. Please try again.");
-        return;
-      }
-
-      // Fetch user role to determine redirect
-      const { data: profile } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", data.user.id)
-        .single();
+      const profile = { role: result.role as string };
 
       // Set a cookie so middleware can read the role
       document.cookie = `user_role=${profile?.role ?? "student"}; path=/; max-age=${60 * 60 * 24 * 30}`;

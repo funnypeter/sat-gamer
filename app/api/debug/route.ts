@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
+import { env } from "@/lib/cf";
 
+// Deployment health check: are the bindings and secrets wired up?
 export async function GET() {
+  const e = env();
+  let dbOk = false;
+  try {
+    dbOk = !!(await e.DB.prepare("SELECT 1 AS ok").first());
+  } catch {}
   return NextResponse.json({
-    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-    hasSupabaseAnon: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    hasDb: dbOk,
+    hasAvatars: !!e.AVATARS,
     hasGeminiKey: !!process.env.GEMINI_API_KEY,
-    geminiKeyPrefix: process.env.GEMINI_API_KEY?.slice(0, 6) ?? "missing",
   });
 }

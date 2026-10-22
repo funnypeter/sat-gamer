@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -18,7 +17,6 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [familyPreview, setFamilyPreview] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = createClient();
 
   // Validate family code as student types
   async function checkCode(code: string) {
@@ -43,20 +41,12 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (authError) { setError(authError.message); return; }
-      if (!authData.user) { setError("Signup failed. Please try again."); return; }
-
       if (role === "parent") {
         // Create family + parent profile
         const resp = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: authData.user.id, email, displayName, familyName }),
+          body: JSON.stringify({ email, password, displayName, familyName }),
         });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
@@ -72,7 +62,7 @@ export default function SignupPage() {
         const resp = await fetch("/api/auth/join", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: authData.user.id, email, displayName, inviteCode: familyCode.toUpperCase() }),
+          body: JSON.stringify({ email, password, displayName, inviteCode: familyCode.toUpperCase() }),
         });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import { getGeminiClient } from "@/lib/gemini/client";
 import { remapExplanationsToDisplayed, splitCbRationale } from "@/lib/cb-rationale";
 import type { Question, QuestionChoice } from "@/lib/types/database";

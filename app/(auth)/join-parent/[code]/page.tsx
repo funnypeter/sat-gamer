@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 
@@ -18,7 +17,6 @@ export default function ParentJoinPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
     async function lookupFamily() {
@@ -45,33 +43,12 @@ export default function ParentJoinPage() {
     setLoading(true);
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-            role: "parent",
-          },
-        },
-      });
-
-      if (authError) {
-        setError(authError.message);
-        return;
-      }
-
-      if (!authData.user) {
-        setError("Signup failed. Please try again.");
-        return;
-      }
-
       const setupResp = await fetch("/api/auth/join-parent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: authData.user.id,
           email,
+          password,
           displayName,
           inviteCode: code,
         }),

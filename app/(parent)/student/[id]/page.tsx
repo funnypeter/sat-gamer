@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import { DSAT_CATEGORIES } from "@/lib/constants";
 import Link from "next/link";
 import ResetStudentButton from "@/components/parent/ResetStudentButton";
@@ -15,8 +15,9 @@ interface WeekData {
 export default async function StudentDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id: studentId } = await params;
   const supabase = createClient();
   const {
     data: { user },
@@ -39,7 +40,7 @@ export default async function StudentDetailPage({
   const { data: student } = await admin
     .from("users")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", studentId)
     .eq("family_id", parentProfile.family_id)
     .eq("role", "student")
     .single();
@@ -56,19 +57,19 @@ export default async function StudentDetailPage({
     admin
       .from("student_stats")
       .select("*")
-      .eq("student_id", params.id),
+      .eq("student_id", studentId),
     admin
       .from("streaks")
       .select("*")
-      .eq("student_id", params.id)
+      .eq("student_id", studentId)
       .single(),
     admin
       .from("student_questions")
       .select("*, questions(category)")
-      .eq("student_id", params.id)
+      .eq("student_id", studentId)
       .order("answered_at", { ascending: false })
       .limit(10),
-    admin.rpc("avg_time_by_category", { p_student_id: params.id }),
+    admin.rpc("avg_time_by_category", { p_student_id: studentId }),
   ]);
 
   // Overall stats
@@ -106,7 +107,7 @@ export default async function StudentDetailPage({
   const { data: weeklyRaw } = await admin
     .from("student_questions")
     .select("answered_at, is_correct")
-    .eq("student_id", params.id)
+    .eq("student_id", studentId)
     .gte("answered_at", fourWeeksAgo.toISOString())
     .order("answered_at", { ascending: true });
 
@@ -284,7 +285,7 @@ export default async function StudentDetailPage({
           This action cannot be undone.
         </p>
         <ResetStudentButton
-          studentId={params.id}
+          studentId={studentId}
           studentName={student.display_name}
         />
       </section>

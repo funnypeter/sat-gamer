@@ -1,4 +1,4 @@
-import type { createAdminClient } from "@/lib/supabase/admin";
+import type { createAdminClient } from "@/lib/db";
 import { getGeminiModel } from "@/lib/gemini/client";
 import { pickDistractors, buildChoiceSet } from "./distractors";
 import { buildVocabSentencePrompt, buildExplanations, type SentenceRequest } from "./prompts";

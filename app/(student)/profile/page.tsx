@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import AvatarUpload from "@/components/shared/AvatarUpload";
 import SignOutButton from "@/components/shared/SignOutButton";
 import TimerSettingToggle from "@/components/student/TimerSettingToggle";

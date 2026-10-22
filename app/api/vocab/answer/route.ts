@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import { DEFAULT_SETTINGS, VOCAB_EARNING_RATES, VOCAB_MASTERY } from "@/lib/constants";
 import { startOfWeekInAppTimezone, todayInAppTimezone } from "@/lib/date";
 import { nextMastery, INITIAL_MASTERY, type MasteryState } from "@/lib/vocab/mastery";
@@ -89,6 +89,7 @@ export async function POST(request: Request) {
           .from("sessions")
           .select("total_questions, correct_count, minutes_earned")
           .eq("id", sessionId)
+        .eq("student_id", user.id)
           .single(),
       ]);
 
@@ -176,6 +177,7 @@ export async function POST(request: Request) {
             minutes_earned: Number(session.minutes_earned) + minutesAwarded,
           })
           .eq("id", sessionId)
+          .eq("student_id", user.id)
       );
     }
 

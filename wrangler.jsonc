@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sat-gamer",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "routes": [
+    { "pattern": "satgamer.pmansour.com", "custom_domain": true }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sat-gamer",
+      "database_id": "f57d69a2-4a17-42c8-be4b-3b33a9bfbfb0",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "AVATARS", "bucket_name": "sat-gamer-avatars" }
+  ],
+  "vars": {
+    "NEXT_PUBLIC_APP_URL": "https://satgamer.pmansour.com"
+  },
+  // GEMINI_API_KEY is a secret: `npx wrangler secret put GEMINI_API_KEY`
+  "observability": { "enabled": true }
+}

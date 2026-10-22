@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 
@@ -18,7 +17,6 @@ export default function StudentJoinPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   useEffect(() => {
     async function lookupFamily() {
@@ -45,35 +43,13 @@ export default function StudentJoinPage() {
     setLoading(true);
 
     try {
-      // 1. Create auth account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-            role: "student",
-          },
-        },
-      });
-
-      if (authError) {
-        setError(authError.message);
-        return;
-      }
-
-      if (!authData.user) {
-        setError("Signup failed. Please try again.");
-        return;
-      }
-
-      // 2. Complete setup via API
+      // Creates the login + profile and signs in
       const setupResp = await fetch("/api/auth/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: authData.user.id,
           email,
+          password,
           displayName,
           inviteCode: code,
         }),

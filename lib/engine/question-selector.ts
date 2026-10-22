@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/db";
 import type { Question } from "@/lib/types/database";
 import { DSAT_CATEGORIES, type DsatCategory } from "@/lib/constants";
 
@@ -59,7 +59,7 @@ export function pickTargetCategory(): DsatCategory {
  * *level* adapts even though the *topic* doesn't.
  */
 export async function selectNextQuestion(
-  supabase: SupabaseClient,
+  supabase: Db,
   studentId: string,
   currentSessionId?: string,
   opts?: { allowRepeats?: boolean }
@@ -205,7 +205,7 @@ export async function selectNextQuestion(
 }
 
 async function findUnseen(
-  supabase: SupabaseClient,
+  supabase: Db,
   answeredIds: Set<string>,
   sessionAnsweredIds: Set<string>,
   filters: {

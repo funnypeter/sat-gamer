@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { DSAT_CATEGORIES } from "@/lib/constants";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
+import { createAccount, signupErrorResponse } from "@/lib/signup";
 
 export async function POST(request: Request) {
   try {
@@ -41,62 +41,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create auth user
-    const { data: authData, error: authError } =
-      await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          display_name: displayName,
-          role: "student",
-        },
-      });
-
-    if (authError || !authData.user) {
-      return NextResponse.json(
-        { error: authError?.message ?? "Failed to create auth user" },
-        { status: 500 }
+    // Login + profile + initial stats/streak; the parent stays signed in as themselves.
+    let student;
+    try {
+      student = await createAccount(
+        { email, password, displayName, familyId: parentProfile.family_id, role: "student" },
+        { signIn: false }
       );
+    } catch (err) {
+      const { error, status } = signupErrorResponse(err);
+      return NextResponse.json({ error }, { status });
     }
-
-    // Create user profile
-    const { error: profileError } = await adminClient.from("users").insert({
-      id: authData.user.id,
-      family_id: parentProfile.family_id,
-      role: "student",
-      display_name: displayName,
-      email,
-    });
-
-    if (profileError) {
-      return NextResponse.json(
-        { error: "Failed to create user profile" },
-        { status: 500 }
-      );
-    }
-
-    // Create initial stats for all categories
-    const initialStats = DSAT_CATEGORIES.map((category) => ({
-      student_id: authData.user.id,
-      category,
-      elo_rating: 500,
-      total_attempted: 0,
-      total_correct: 0,
-    }));
-
-    await adminClient.from("student_stats").insert(initialStats);
-
-    // Create initial streak
-    await adminClient.from("streaks").insert({
-      student_id: authData.user.id,
-      current_streak: 0,
-      longest_streak: 0,
-    });
 
     return NextResponse.json({
       success: true,
-      studentId: authData.user.id,
+      studentId: student.id,
     });
   } catch (err) {
     console.error("Student creation error:", err);

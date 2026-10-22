@@ -5,7 +5,7 @@ import { useState } from "react";
 export default function InviteCodeCard({ inviteCode }: { inviteCode: string }) {
   const [copied, setCopied] = useState(false);
 
-  const joinUrl = `sat-gamer.vercel.app/join/${inviteCode}`;
+  const joinUrl = `satgamer.pmansour.com/join/${inviteCode}`;
 
   function handleCopy() {
     navigator.clipboard.writeText(`https://${joinUrl}`);

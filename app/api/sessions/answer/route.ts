@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import { calculateNewElo } from "@/lib/engine/elo";
 import { DEFAULT_SETTINGS, EARNING_RATES } from "@/lib/constants";
 import { startOfWeekInAppTimezone } from "@/lib/date";
@@ -109,6 +109,7 @@ export async function POST(request: Request) {
         .from("sessions")
         .select("total_questions, correct_count, minutes_earned")
         .eq("id", sessionId)
+        .eq("student_id", user.id)
         .single(),
       isCorrect
         ? Promise.resolve({ data: null })
@@ -209,6 +210,7 @@ export async function POST(request: Request) {
             minutes_earned: Number(session.minutes_earned) + minutesAwarded,
           })
           .eq("id", sessionId)
+          .eq("student_id", user.id)
       );
     }
 

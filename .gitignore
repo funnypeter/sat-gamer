@@ -38,3 +38,10 @@ next-env.d.ts
 .vercel
 .claude/settings.local.json
 Screenshot*.png
+
+# cloudflare
+.open-next
+.wrangler
+.dev.vars
+.migration
+cloudflare-env.d.ts

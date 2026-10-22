@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
+import { env } from "@/lib/cf";
 
 export async function POST(request: Request) {
   const supabase = createClient();
@@ -13,19 +14,12 @@ export async function POST(request: Request) {
   if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
 
   const path = `${user.id}/avatar.jpg`;
+  await env().AVATARS.put(path, await file.arrayBuffer(), {
+    httpMetadata: { contentType: file.type || "image/jpeg" },
+  });
 
-  // Delete old avatar first, then upload new one
-  await admin.storage.from("avatars").remove([path]);
-  const { error: uploadError } = await admin.storage
-    .from("avatars")
-    .upload(path, file, { contentType: file.type });
-
-  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
-
-  const { data: { publicUrl } } = admin.storage.from("avatars").getPublicUrl(path);
-
-  // Add cache-buster to URL
-  const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+  // Add cache-buster to URL (served by app/avatars/[...path]/route.ts)
+  const avatarUrl = `/avatars/${path}?t=${Date.now()}`;
 
   // Update user profile
   await admin.from("users").update({ avatar_url: avatarUrl }).eq("id", user.id);

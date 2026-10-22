@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import LeaderboardClient from "./LeaderboardClient";
 import { buildLeaderboard } from "@/lib/engine/leaderboard";
 

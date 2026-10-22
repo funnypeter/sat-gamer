@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/db";
+import { createAdminClient } from "@/lib/db";
 import ChildOverviewCard from "@/components/parent/ChildOverviewCard";
 import RedemptionQueue from "@/components/parent/RedemptionQueue";
 import { effectiveStreak } from "@/lib/engine/streak";
